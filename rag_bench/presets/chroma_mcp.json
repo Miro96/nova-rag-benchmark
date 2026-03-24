@@ -1,0 +1,17 @@
+{
+  "name": "chroma-mcp",
+  "git_url": "https://github.com/chroma-core/chroma-mcp",
+  "command": "uvx",
+  "args": ["chroma-mcp-server"],
+  "transport": "stdio",
+  "tool_mapping": {
+    "ingest": {
+      "tool": "chroma_add_documents",
+      "params": {"collection_name": "rag_bench", "documents": "{documents}"}
+    },
+    "query": {
+      "tool": "chroma_query_documents",
+      "params": {"collection_name": "rag_bench", "query_texts": "{query}", "n_results": "{top_k}"}
+    }
+  }
+}

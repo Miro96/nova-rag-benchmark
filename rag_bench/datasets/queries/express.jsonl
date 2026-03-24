@@ -1,0 +1,30 @@
+{"id": "express_001", "type": "locate", "query": "where is the Express application created?", "expected_files": ["lib/express.js"], "expected_symbols": ["createApplication"], "difficulty": "easy"}
+{"id": "express_002", "type": "locate", "query": "where is HTTP request routing handled?", "expected_files": ["lib/router/index.js"], "expected_symbols": ["Router", "handle"], "difficulty": "easy"}
+{"id": "express_003", "type": "locate", "query": "where is the route matching logic?", "expected_files": ["lib/router/layer.js"], "expected_symbols": ["Layer", "match"], "difficulty": "medium"}
+{"id": "express_004", "type": "locate", "query": "where are request object methods defined?", "expected_files": ["lib/request.js"], "expected_symbols": ["req"], "difficulty": "easy"}
+{"id": "express_005", "type": "locate", "query": "where are response object methods defined?", "expected_files": ["lib/response.js"], "expected_symbols": ["res"], "difficulty": "easy"}
+{"id": "express_006", "type": "locate", "query": "where is middleware processing implemented?", "expected_files": ["lib/router/index.js"], "expected_symbols": ["handle", "next"], "difficulty": "medium"}
+{"id": "express_007", "type": "explain", "query": "how does Express handle static file serving?", "expected_files": ["lib/express.js"], "expected_symbols": ["static"], "difficulty": "medium"}
+{"id": "express_008", "type": "locate", "query": "where is the view/template rendering system?", "expected_files": ["lib/view.js"], "expected_symbols": ["View", "render"], "difficulty": "medium"}
+{"id": "express_009", "type": "callers", "query": "what calls the next() function in middleware?", "expected_files": ["lib/router/index.js"], "expected_symbols": ["next", "handle"], "difficulty": "hard"}
+{"id": "express_010", "type": "locate", "query": "where is route parameter handling?", "expected_files": ["lib/router/index.js", "lib/router/route.js"], "expected_symbols": ["param", "process_params"], "difficulty": "medium"}
+{"id": "express_011", "type": "explain", "query": "how does Express set and get application settings?", "expected_files": ["lib/application.js"], "expected_symbols": ["set", "get", "enabled"], "difficulty": "medium"}
+{"id": "express_012", "type": "locate", "query": "where is the Route class defined?", "expected_files": ["lib/router/route.js"], "expected_symbols": ["Route"], "difficulty": "easy"}
+{"id": "express_013", "type": "impact", "query": "what breaks if the router handle method is changed?", "expected_files": ["lib/router/index.js", "lib/application.js"], "expected_symbols": ["handle"], "difficulty": "hard"}
+{"id": "express_014", "type": "locate", "query": "where is JSON body parsing?", "expected_files": ["lib/express.js"], "expected_symbols": ["json"], "difficulty": "easy"}
+{"id": "express_015", "type": "callers", "query": "what calls app.render?", "expected_files": ["lib/application.js", "lib/response.js"], "expected_symbols": ["render"], "difficulty": "medium"}
+{"id": "express_016", "type": "explain", "query": "how does Express handle errors in middleware chain?", "expected_files": ["lib/router/index.js"], "expected_symbols": ["handle"], "difficulty": "hard"}
+{"id": "express_017", "type": "locate", "query": "where is the app.listen method?", "expected_files": ["lib/application.js"], "expected_symbols": ["listen"], "difficulty": "easy"}
+{"id": "express_018", "type": "locate", "query": "where are content-type utilities?", "expected_files": ["lib/utils.js"], "expected_symbols": ["normalizeType", "contentDisposition"], "difficulty": "medium"}
+{"id": "express_019", "type": "impact", "query": "what would break if res.send is modified?", "expected_files": ["lib/response.js"], "expected_symbols": ["send", "json", "jsonp"], "difficulty": "hard"}
+{"id": "express_020", "type": "explain", "query": "how does Express handle cookie parsing and setting?", "expected_files": ["lib/response.js", "lib/request.js"], "expected_symbols": ["cookie", "clearCookie"], "difficulty": "medium"}
+{"id": "express_021", "type": "locate", "query": "where is URL-encoded body parsing?", "expected_files": ["lib/express.js"], "expected_symbols": ["urlencoded"], "difficulty": "easy"}
+{"id": "express_022", "type": "callers", "query": "what calls Layer.match?", "expected_files": ["lib/router/index.js", "lib/router/layer.js"], "expected_symbols": ["match"], "difficulty": "medium"}
+{"id": "express_023", "type": "explain", "query": "how does Express handle redirects?", "expected_files": ["lib/response.js"], "expected_symbols": ["redirect", "location"], "difficulty": "medium"}
+{"id": "express_024", "type": "locate", "query": "where is trust proxy handling?", "expected_files": ["lib/utils.js", "lib/request.js"], "expected_symbols": ["compileTrust"], "difficulty": "hard"}
+{"id": "express_025", "type": "impact", "query": "what is affected if the Layer class changes?", "expected_files": ["lib/router/layer.js", "lib/router/index.js", "lib/router/route.js"], "expected_symbols": ["Layer"], "difficulty": "hard"}
+{"id": "express_026", "type": "locate", "query": "where is res.sendFile implemented?", "expected_files": ["lib/response.js"], "expected_symbols": ["sendFile", "sendfile"], "difficulty": "easy"}
+{"id": "express_027", "type": "callers", "query": "what uses req.accepts?", "expected_files": ["lib/request.js"], "expected_symbols": ["accepts"], "difficulty": "medium"}
+{"id": "express_028", "type": "explain", "query": "how does Express mount sub-applications?", "expected_files": ["lib/application.js", "lib/router/index.js"], "expected_symbols": ["use", "handle"], "difficulty": "hard"}
+{"id": "express_029", "type": "locate", "query": "where is content negotiation?", "expected_files": ["lib/request.js", "lib/response.js"], "expected_symbols": ["accepts", "format"], "difficulty": "medium"}
+{"id": "express_030", "type": "impact", "query": "what breaks if the middleware next() mechanism is modified?", "expected_files": ["lib/router/index.js", "lib/router/route.js"], "expected_symbols": ["next", "handle", "dispatch"], "difficulty": "hard"}

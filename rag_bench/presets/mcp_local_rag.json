@@ -1,0 +1,17 @@
+{
+  "name": "mcp-local-rag",
+  "git_url": "https://github.com/shinpr/mcp-local-rag",
+  "command": "npx",
+  "args": ["-y", "mcp-local-rag"],
+  "transport": "stdio",
+  "tool_mapping": {
+    "ingest": {
+      "tool": "ingest_file",
+      "params": {"file_path": "{file_path}"}
+    },
+    "query": {
+      "tool": "query_documents",
+      "params": {"query": "{query}", "limit": "{top_k}"}
+    }
+  }
+}

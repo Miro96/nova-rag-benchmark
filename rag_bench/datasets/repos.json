@@ -1,0 +1,23 @@
+[
+  {
+    "name": "flask",
+    "git_url": "https://github.com/pallets/flask.git",
+    "ref": "3.1.0",
+    "language": "python",
+    "size": "small"
+  },
+  {
+    "name": "fastapi",
+    "git_url": "https://github.com/fastapi/fastapi.git",
+    "ref": "0.115.0",
+    "language": "python",
+    "size": "medium"
+  },
+  {
+    "name": "express",
+    "git_url": "https://github.com/expressjs/express.git",
+    "ref": "v5.0.1",
+    "language": "javascript",
+    "size": "small"
+  }
+]

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>rag-bench Leaderboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #c9d1d9;
+            padding: 24px;
+        }
+        h1 {
+            font-size: 28px;
+            color: #58a6ff;
+            margin-bottom: 8px;
+        }
+        .subtitle {
+            color: #8b949e;
+            margin-bottom: 24px;
+            font-size: 14px;
+        }
+        .controls {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        select, button {
+            background: #21262d;
+            color: #c9d1d9;
+            border: 1px solid #30363d;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        select:hover, button:hover { border-color: #58a6ff; }
+        button.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th {
+            background: #161b22;
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid #30363d;
+            color: #8b949e;
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+        }
+        th:hover { color: #58a6ff; }
+        th.sorted { color: #58a6ff; }
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #21262d;
+        }
+        tr:hover { background: #161b22; }
+        .rank { color: #8b949e; font-weight: 600; }
+        .rank-1 { color: #ffd700; }
+        .rank-2 { color: #c0c0c0; }
+        .rank-3 { color: #cd7f32; }
+        a { color: #58a6ff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .score {
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+        .good { color: #3fb950; }
+        .mid { color: #d29922; }
+        .bad { color: #f85149; }
+        .metric {
+            font-variant-numeric: tabular-nums;
+        }
+        .chart-container {
+            display: none;
+            margin: 24px 0;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .chart-container.visible { display: block; }
+        .checkbox-cell { text-align: center; }
+        input[type="checkbox"] {
+            accent-color: #58a6ff;
+            cursor: pointer;
+        }
+        .compare-bar {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #161b22;
+            border-top: 1px solid #30363d;
+            padding: 12px 24px;
+            text-align: center;
+            z-index: 100;
+        }
+        .compare-bar.visible { display: block; }
+        .empty {
+            text-align: center;
+            padding: 48px;
+            color: #8b949e;
+        }
+    </style>
+</head>
+<body>
+    <h1>rag-bench Leaderboard</h1>
+    <p class="subtitle">Code RAG MCP Server Benchmark — comparing retrieval quality, speed, and efficiency</p>
+
+    <div class="controls">
+        <label>Sort by:
+            <select id="sortSelect">
+                <option value="composite_score">Composite Score</option>
+                <option value="hit_at_1">Hit@1</option>
+                <option value="hit_at_5">Hit@5</option>
+                <option value="symbol_hit_at_5">Symbol Hit@5</option>
+                <option value="mrr">MRR</option>
+                <option value="query_latency_p50_ms">Latency p50</option>
+                <option value="query_latency_p95_ms">Latency p95</option>
+                <option value="ingest_total_sec">Ingest Time</option>
+                <option value="ram_peak_mb">RAM Peak</option>
+            </select>
+        </label>
+        <button id="compareBtn" onclick="toggleChart()">Compare Selected</button>
+    </div>
+
+    <table id="leaderboard">
+        <thead>
+            <tr>
+                <th></th>
+                <th>#</th>
+                <th>Server</th>
+                <th>User</th>
+                <th data-sort="hit_at_1">Hit@1</th>
+                <th data-sort="hit_at_5">Hit@5</th>
+                <th data-sort="symbol_hit_at_5">Sym@5</th>
+                <th data-sort="mrr">MRR</th>
+                <th data-sort="query_latency_p50_ms">p50 ms</th>
+                <th data-sort="query_latency_p95_ms">p95 ms</th>
+                <th data-sort="ingest_total_sec">Ingest</th>
+                <th data-sort="ram_peak_mb">RAM</th>
+                <th data-sort="composite_score">Score</th>
+            </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+    </table>
+
+    <div class="chart-container" id="chartContainer">
+        <canvas id="radarChart"></canvas>
+    </div>
+
+    <div class="compare-bar" id="compareBar">
+        <button onclick="toggleChart()">Compare Selected Servers</button>
+    </div>
+
+    <script>
+        let entries = [];
+        let selected = new Set();
+        let chart = null;
+        let currentSort = 'composite_score';
+        let currentOrder = 'desc';
+
+        async function loadData() {
+            const sort = document.getElementById('sortSelect').value;
+            const order = ['query_latency_p50_ms', 'query_latency_p95_ms', 'ingest_total_sec', 'ram_peak_mb'].includes(sort) ? 'asc' : 'desc';
+            try {
+                const res = await fetch(`/api/leaderboard?sort_by=${sort}&order=${order}&limit=50`);
+                const data = await res.json();
+                entries = data.entries || [];
+                renderTable();
+            } catch (e) {
+                document.getElementById('tbody').innerHTML = '<tr><td colspan="13" class="empty">Failed to load data</td></tr>';
+            }
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('tbody');
+            if (!entries.length) {
+                tbody.innerHTML = '<tr><td colspan="13" class="empty">No benchmark results yet. Run: rag-bench run --preset nova-rag</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = entries.map((e, i) => {
+                const rank = i + 1;
+                const rankClass = rank <= 3 ? `rank rank-${rank}` : 'rank';
+                const name = e.git_url
+                    ? `<a href="${esc(e.git_url)}" target="_blank">${esc(e.server_name)}</a>`
+                    : esc(e.server_name);
+                const user = e.git_user
+                    ? `<a href="https://github.com/${esc(e.git_user)}" target="_blank">@${esc(e.git_user)}</a>`
+                    : '-';
+
+                return `<tr>
+                    <td class="checkbox-cell"><input type="checkbox" data-id="${e.id}" onchange="onSelect(this)" ${selected.has(e.id) ? 'checked' : ''}></td>
+                    <td class="${rankClass}">${rank}</td>
+                    <td>${name}</td>
+                    <td>${user}</td>
+                    <td class="metric">${pct(e.hit_at_1)}</td>
+                    <td class="metric">${pct(e.hit_at_5)}</td>
+                    <td class="metric">${pct(e.symbol_hit_at_5)}</td>
+                    <td class="metric">${e.mrr.toFixed(4)}</td>
+                    <td class="metric">${e.query_latency_p50_ms.toFixed(0)}</td>
+                    <td class="metric">${e.query_latency_p95_ms.toFixed(0)}</td>
+                    <td class="metric">${e.ingest_total_sec.toFixed(1)}s</td>
+                    <td class="metric">${e.ram_peak_mb.toFixed(0)} MB</td>
+                    <td class="score ${scoreClass(e.composite_score)}">${e.composite_score.toFixed(4)}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function pct(v) { return (v * 100).toFixed(1) + '%'; }
+        function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+        function scoreClass(s) { return s >= 0.7 ? 'good' : s >= 0.4 ? 'mid' : 'bad'; }
+
+        function onSelect(cb) {
+            if (cb.checked) selected.add(cb.dataset.id);
+            else selected.delete(cb.dataset.id);
+            document.getElementById('compareBar').className = selected.size >= 2 ? 'compare-bar visible' : 'compare-bar';
+        }
+
+        function toggleChart() {
+            const container = document.getElementById('chartContainer');
+            if (container.classList.contains('visible')) {
+                container.classList.remove('visible');
+                if (chart) { chart.destroy(); chart = null; }
+                return;
+            }
+
+            const selectedEntries = entries.filter(e => selected.has(e.id));
+            if (selectedEntries.length < 2) {
+                alert('Select at least 2 servers to compare');
+                return;
+            }
+
+            container.classList.add('visible');
+            drawRadar(selectedEntries);
+        }
+
+        function drawRadar(data) {
+            if (chart) chart.destroy();
+
+            const labels = ['Hit@1', 'Hit@5', 'Symbol@5', 'MRR', 'Speed', 'Efficiency'];
+            const colors = ['#58a6ff', '#3fb950', '#d29922', '#f85149', '#bc8cff', '#79c0ff'];
+
+            const maxLat = Math.max(...data.map(d => d.query_latency_p95_ms || 1));
+
+            const datasets = data.map((d, i) => ({
+                label: d.server_name,
+                data: [
+                    d.hit_at_1,
+                    d.hit_at_5,
+                    d.symbol_hit_at_5,
+                    d.mrr,
+                    1 - (d.query_latency_p95_ms / maxLat),
+                    1 / (1 + d.avg_tool_calls),
+                ],
+                borderColor: colors[i % colors.length],
+                backgroundColor: colors[i % colors.length] + '20',
+                pointBackgroundColor: colors[i % colors.length],
+            }));
+
+            chart = new Chart(document.getElementById('radarChart'), {
+                type: 'radar',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 1,
+                            grid: { color: '#30363d' },
+                            angleLines: { color: '#30363d' },
+                            pointLabels: { color: '#8b949e', font: { size: 12 } },
+                            ticks: { display: false },
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#c9d1d9' } }
+                    }
+                }
+            });
+        }
+
+        // Header sort
+        document.querySelectorAll('th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                document.getElementById('sortSelect').value = th.dataset.sort;
+                loadData();
+            });
+        });
+
+        document.getElementById('sortSelect').addEventListener('change', loadData);
+
+        // Initial load
+        loadData();
+    </script>
+</body>
+</html>
