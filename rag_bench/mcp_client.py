@@ -60,6 +60,7 @@ class MCPClient:
     _request_id: int = field(default=0, init=False, repr=False)
     _tools: list[ToolInfo] = field(default_factory=list, init=False, repr=False)
     _read_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
+    call_count: int = field(default=0, init=False, repr=False)
 
     async def start(self) -> None:
         """Start the MCP server subprocess and initialize."""
@@ -108,7 +109,13 @@ class MCPClient:
         return self._tools
 
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> CallResult:
-        """Call an MCP tool and measure latency."""
+        """Call an MCP tool and measure latency.
+
+        ``call_count`` tracks attempted invocations (including failures) so the
+        runner can compute per-query MCP tool-call counts via before/after
+        deltas, instead of hardcoding 1.0.
+        """
+        self.call_count += 1
         t0 = time.perf_counter()
         result = await self._request("tools/call", {
             "name": name,

@@ -125,6 +125,7 @@ async def run_benchmark(
             logger.info("=== BENCHMARK PHASE (%d queries) ===", len(queries))
 
             for i, q in enumerate(queries):
+                calls_before = client.call_count
                 try:
                     raw_result = await adapter.query_raw(q.query, top_k=top_k)
                     search_results = adapter._parse_search_results(raw_result)
@@ -142,6 +143,7 @@ async def run_benchmark(
                         returned_files=returned_files,
                         returned_symbols=returned_symbols,
                         latency_ms=raw_result.latency_ms,
+                        tool_calls=client.call_count - calls_before,
                     )
 
                     qr.found_file = any(
@@ -173,6 +175,7 @@ async def run_benchmark(
                         returned_files=[],
                         returned_symbols=[],
                         latency_ms=0,
+                        tool_calls=client.call_count - calls_before,
                     ))
     finally:
         if sampler is not None:
@@ -311,7 +314,9 @@ def _build_result_json(
                 "found_file": qr.found_file,
                 "found_symbol": qr.found_symbol,
                 "latency_ms": round(qr.latency_ms, 1),
+                "tool_calls": qr.tool_calls,
                 "returned_files": qr.returned_files[:5],
+                "returned_symbols": [s for s in qr.returned_symbols[:5] if s],
             }
             for qr in query_results
         ],

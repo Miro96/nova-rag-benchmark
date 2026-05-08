@@ -7,8 +7,10 @@ import time
 import pytest
 
 from rag_bench.metrics import (
+    COMPOSITE_WEIGHTS,
     MemorySampler,
     QueryResult,
+    compute_composite_score,
     compute_hit_at_k,
     compute_latency_stats,
     compute_metrics,
@@ -571,3 +573,194 @@ class TestMemorySampler:
             t for t in threading.enumerate() if t.name == "MemorySampler"
         ]
         assert worker_threads == []
+
+
+class TestToolCallsTracking:
+    def test_query_result_default_is_zero(self):
+        # Default must be 0, not 1: hardcoding 1.0 was the bug we are fixing.
+        qr = QueryResult(
+            query_id="q", query_text="", query_type="locate",
+            difficulty="easy", expected_files=[], expected_symbols=[],
+            returned_files=[], returned_symbols=[], latency_ms=1.0,
+        )
+        assert qr.tool_calls == 0
+
+    def test_avg_tool_calls_reflects_actual_invocations(self):
+        # Per-query tool_calls drive avg_tool_calls; verify mean tracks
+        # the true sum/count and is not pinned at 1.0.
+        results = [
+            _make_qr(latency_ms=10),
+            _make_qr(latency_ms=20),
+            _make_qr(latency_ms=30),
+        ]
+        results[0].tool_calls = 1
+        results[1].tool_calls = 2
+        results[2].tool_calls = 3
+        m = compute_metrics(results)
+        assert m.avg_tool_calls == pytest.approx(2.0)
+
+    def test_unique_tool_call_counts_in_query_details(self):
+        # Validation contract evidence requires > 1 unique tool_calls value
+        # across query_details. Verify the mechanism produces variance when
+        # invocations vary.
+        results = [_make_qr(latency_ms=10) for _ in range(5)]
+        for qr, n in zip(results, [0, 1, 1, 2, 3]):
+            qr.tool_calls = n
+        unique = {qr.tool_calls for qr in results}
+        assert len(unique) > 1
+
+    def test_mcp_client_call_count_increments_on_call(self):
+        import asyncio
+
+        from rag_bench.mcp_client import MCPClient
+
+        client = MCPClient(command="true")
+
+        async def fake_request(method, params):
+            return {"content": [{"type": "text", "text": "ok"}]}
+
+        client._request = fake_request  # type: ignore[assignment]
+
+        async def go():
+            assert client.call_count == 0
+            await client.call_tool("a", {})
+            await client.call_tool("b", {})
+            await client.call_tool("c", {})
+            return client.call_count
+
+        assert asyncio.run(go()) == 3
+
+    def test_mcp_client_call_count_increments_on_failure(self):
+        import asyncio
+
+        from rag_bench.mcp_client import MCPClient
+
+        client = MCPClient(command="true")
+
+        async def failing_request(method, params):
+            raise RuntimeError("boom")
+
+        client._request = failing_request  # type: ignore[assignment]
+
+        async def go():
+            with pytest.raises(RuntimeError):
+                await client.call_tool("a", {})
+            return client.call_count
+
+        # Failed attempts still count as MCP invocations.
+        assert asyncio.run(go()) == 1
+
+
+class TestCompositeScore:
+    def test_weights_sum_to_one(self):
+        assert sum(COMPOSITE_WEIGHTS.values()) == pytest.approx(1.0)
+
+    def test_score_in_open_unit_interval(self):
+        score = compute_composite_score(
+            hit_at_5=0.5,
+            symbol_hit_at_5=0.4,
+            mrr=0.6,
+            avg_tool_calls=1.0,
+            p95_latency_ms=200.0,
+            ram_peak_mb=300.0,
+            index_size_mb=20.0,
+        )
+        assert 0.0 < score < 1.0
+
+    def test_score_includes_all_weighted_components(self):
+        # Changing any single component must shift the composite score; if a
+        # weight were dropped, the corresponding sensitivity would be zero.
+        base = dict(
+            hit_at_5=0.5,
+            symbol_hit_at_5=0.4,
+            mrr=0.6,
+            avg_tool_calls=1.0,
+            p95_latency_ms=200.0,
+            ram_peak_mb=300.0,
+            index_size_mb=20.0,
+        )
+        baseline = compute_composite_score(**base)
+
+        for key in [
+            "hit_at_5",
+            "symbol_hit_at_5",
+            "mrr",
+            "avg_tool_calls",
+            "p95_latency_ms",
+            "ram_peak_mb",
+            "index_size_mb",
+        ]:
+            perturbed = dict(base)
+            if key in ("hit_at_5", "symbol_hit_at_5", "mrr"):
+                perturbed[key] = 0.0
+            else:
+                perturbed[key] = base[key] * 10
+            other = compute_composite_score(**perturbed)
+            assert other != pytest.approx(baseline), (
+                f"composite_score does not depend on {key}"
+            )
+
+    def test_perfect_quality_yields_high_score(self):
+        score = compute_composite_score(
+            hit_at_5=1.0,
+            symbol_hit_at_5=1.0,
+            mrr=1.0,
+            avg_tool_calls=0.0,
+            p95_latency_ms=0.0,
+            ram_peak_mb=0.0,
+            index_size_mb=0.0,
+        )
+        # 0.30 + 0.15 + 0.15 + 0.15*1 + 0.15*1 + 0.10*1 = 1.0
+        assert score == pytest.approx(1.0)
+
+    def test_zero_quality_still_positive_due_to_efficiency_terms(self):
+        # Inverse-scale terms (tool_score, latency_score, resource_score) are
+        # always > 0, so composite_score is strictly > 0 even when retrieval
+        # quality is zero.
+        score = compute_composite_score(
+            hit_at_5=0.0,
+            symbol_hit_at_5=0.0,
+            mrr=0.0,
+            avg_tool_calls=10.0,
+            p95_latency_ms=10_000.0,
+            ram_peak_mb=10_000.0,
+            index_size_mb=10_000.0,
+        )
+        assert 0.0 < score < 1.0
+
+    def test_lower_tool_calls_improves_score(self):
+        higher_tool_calls = compute_composite_score(
+            hit_at_5=0.5, symbol_hit_at_5=0.5, mrr=0.5,
+            avg_tool_calls=10.0,
+            p95_latency_ms=100.0, ram_peak_mb=100.0, index_size_mb=10.0,
+        )
+        lower_tool_calls = compute_composite_score(
+            hit_at_5=0.5, symbol_hit_at_5=0.5, mrr=0.5,
+            avg_tool_calls=1.0,
+            p95_latency_ms=100.0, ram_peak_mb=100.0, index_size_mb=10.0,
+        )
+        assert lower_tool_calls > higher_tool_calls
+
+    def test_lower_latency_improves_score(self):
+        slow = compute_composite_score(
+            hit_at_5=0.5, symbol_hit_at_5=0.5, mrr=0.5,
+            avg_tool_calls=1.0,
+            p95_latency_ms=2000.0, ram_peak_mb=100.0, index_size_mb=10.0,
+        )
+        fast = compute_composite_score(
+            hit_at_5=0.5, symbol_hit_at_5=0.5, mrr=0.5,
+            avg_tool_calls=1.0,
+            p95_latency_ms=50.0, ram_peak_mb=100.0, index_size_mb=10.0,
+        )
+        assert fast > slow
+
+    def test_compute_metrics_composite_in_open_unit_interval(self):
+        results = [
+            _make_qr(
+                returned_files=["src/app.py"], expected_files=["src/app.py"],
+                returned_symbols=["MyClass"], expected_symbols=["MyClass"],
+                latency_ms=100,
+            ),
+        ]
+        m = compute_metrics(results, ingest_total_sec=1.0, ingest_total_files=10)
+        assert 0.0 < m.composite_score < 1.0

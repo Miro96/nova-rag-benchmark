@@ -25,7 +25,7 @@ class QueryResult:
     returned_files: list[str]
     returned_symbols: list[str]
     latency_ms: float
-    tool_calls: int = 1
+    tool_calls: int = 0
     found_file: bool = False
     found_symbol: bool = False
 
@@ -323,6 +323,56 @@ class MemorySampler:
         return self.peak_mb
 
 
+COMPOSITE_WEIGHTS: dict[str, float] = {
+    "hit_at_5": 0.30,
+    "symbol_hit_at_5": 0.15,
+    "mrr": 0.15,
+    "tool_score": 0.15,
+    "latency_score": 0.15,
+    "resource_score": 0.10,
+}
+
+
+def compute_composite_score(
+    hit_at_5: float,
+    symbol_hit_at_5: float,
+    mrr: float,
+    avg_tool_calls: float,
+    p95_latency_ms: float,
+    ram_peak_mb: float,
+    index_size_mb: float,
+) -> float:
+    """Combine quality, efficiency, and resource metrics into a single score.
+
+    All six weighted components from ``COMPOSITE_WEIGHTS`` are mixed:
+
+    * ``hit_at_5`` — primary retrieval quality.
+    * ``symbol_hit_at_5`` — symbol-level retrieval quality.
+    * ``mrr`` — ranking quality.
+    * efficiency from ``avg_tool_calls`` (1 / (1 + calls); fewer is better).
+    * latency from ``p95_latency_ms`` (1 / (1 + p95_s); faster is better).
+    * resources from RAM + index size (1 / (1 + (ram + idx) / 1000)).
+
+    Weights sum to 1.0, so the result lies in (0, 1] when at least one
+    component is positive and is exactly 0 only when every component is 0
+    (which cannot happen in practice because the inverse-scale terms are
+    bounded above 0).
+    """
+    tool_score = 1.0 / (1.0 + max(0.0, avg_tool_calls))
+    latency_score = 1.0 / (1.0 + max(0.0, p95_latency_ms) / 1000.0)
+    resource_total = max(0.0, ram_peak_mb) + max(0.0, index_size_mb)
+    resource_score = 1.0 / (1.0 + resource_total / 1000.0)
+
+    return (
+        COMPOSITE_WEIGHTS["hit_at_5"] * hit_at_5
+        + COMPOSITE_WEIGHTS["symbol_hit_at_5"] * symbol_hit_at_5
+        + COMPOSITE_WEIGHTS["mrr"] * mrr
+        + COMPOSITE_WEIGHTS["tool_score"] * tool_score
+        + COMPOSITE_WEIGHTS["latency_score"] * latency_score
+        + COMPOSITE_WEIGHTS["resource_score"] * resource_score
+    )
+
+
 def compute_metrics(
     results: list[QueryResult],
     ingest_total_sec: float = 0.0,
@@ -385,18 +435,14 @@ def compute_metrics(
             }
         setattr(metrics, group_key, breakdown)
 
-    # Composite score
-    latency_score = 1.0 / (1.0 + metrics.query_latency_p95_ms / 1000.0)
-    resource_score = 1.0 / (1.0 + (metrics.ram_peak_mb + metrics.index_size_mb) / 1000.0)
-    tool_score = 1.0 / (1.0 + metrics.avg_tool_calls)
-
-    metrics.composite_score = (
-        0.30 * metrics.hit_at_5
-        + 0.15 * metrics.symbol_hit_at_5
-        + 0.15 * metrics.mrr
-        + 0.15 * tool_score
-        + 0.15 * latency_score
-        + 0.10 * resource_score
+    metrics.composite_score = compute_composite_score(
+        hit_at_5=metrics.hit_at_5,
+        symbol_hit_at_5=metrics.symbol_hit_at_5,
+        mrr=metrics.mrr,
+        avg_tool_calls=metrics.avg_tool_calls,
+        p95_latency_ms=metrics.query_latency_p95_ms,
+        ram_peak_mb=metrics.ram_peak_mb,
+        index_size_mb=metrics.index_size_mb,
     )
 
     return metrics
