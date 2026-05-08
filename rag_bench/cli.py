@@ -43,14 +43,17 @@ def run(preset, config, command, transport, repo, ab_baseline, top_k,
 
     server_config = _resolve_server_config(preset, config, command, transport)
 
-    result = asyncio.run(run_benchmark(
-        server_config=server_config,
-        repo_filter=repo,
-        ab_baseline=ab_baseline,
-        top_k=top_k,
-        replicates=replicates,
-        clean_index=clean_index,
-    ))
+    try:
+        result = asyncio.run(run_benchmark(
+            server_config=server_config,
+            repo_filter=repo,
+            ab_baseline=ab_baseline,
+            top_k=top_k,
+            replicates=replicates,
+            clean_index=clean_index,
+        ))
+    except RuntimeError as e:
+        raise click.ClickException(str(e)) from e
 
     output_path = Path(output) if output else Path(f"results/run_{result['run_id']}.json")
     output_path.parent.mkdir(parents=True, exist_ok=True)

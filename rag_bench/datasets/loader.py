@@ -50,7 +50,12 @@ def load_repos() -> list[RepoInfo]:
 
 
 def clone_repo(repo: RepoInfo) -> Path:
-    """Clone a repo to cache dir, return local path."""
+    """Clone a repo to cache dir, return local path.
+
+    Raises ``RuntimeError`` with a clear message including the repo name
+    and git URL when the clone operation fails (network unreachable, bad
+    ref, etc.).
+    """
     repo_dir = CACHE_DIR / repo.name
     if repo_dir.exists():
         logger.info("Repo %s already cached at %s", repo.name, repo_dir)
@@ -58,12 +63,26 @@ def clone_repo(repo: RepoInfo) -> Path:
 
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     logger.info("Cloning %s (%s)...", repo.name, repo.git_url)
-    subprocess.run(
-        ["git", "clone", "--depth", "1", "--branch", repo.ref,
-         repo.git_url, str(repo_dir)],
-        check=True,
-        capture_output=True,
-    )
+    try:
+        subprocess.run(
+            ["git", "clone", "--depth", "1", "--branch", repo.ref,
+             repo.git_url, str(repo_dir)],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=300,  # 5 min timeout for clone
+        )
+    except subprocess.CalledProcessError as e:
+        stderr = (e.stderr or "").strip()
+        raise RuntimeError(
+            f"Failed to clone '{repo.name}' from {repo.git_url}. "
+            f"Git exited with code {e.returncode}. "
+            f"{'stderr: ' + stderr if stderr else 'No stderr output.'}"
+        ) from e
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(
+            f"Timed out cloning '{repo.name}' from {repo.git_url} (300s limit)."
+        )
     logger.info("Cloned %s to %s", repo.name, repo_dir)
     return repo_dir
 

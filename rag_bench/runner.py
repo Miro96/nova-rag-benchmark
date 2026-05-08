@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import platform
@@ -84,7 +85,13 @@ async def run_benchmark(
     # Clone repos
     repo_dirs: dict[str, Path] = {}
     for repo in repos:
-        repo_dirs[repo.name] = clone_repo(repo)
+        try:
+            repo_dirs[repo.name] = clone_repo(repo)
+        except Exception as e:
+            logger.error("Failed to clone %s: %s", repo.name, e)
+            raise RuntimeError(
+                f"Git clone failed for '{repo.name}' ({repo.git_url}): {e}"
+            ) from e
 
     # Optionally wipe pre-existing index state for a fresh ingest measurement
     if clean_index:
@@ -185,6 +192,23 @@ async def run_benchmark(
         if sampler is not None:
             ram_peak = sampler.stop()
 
+    # === A/B BASELINE (grep/glob agent, optional) ===
+    baseline_result: dict | None = None
+    if ab_baseline:
+        logger.info("=== A/B BASELINE ===")
+        try:
+            baseline_result = await _run_baseline_pass(
+                queries, repo_dirs, server_config=server_config,
+            )
+            logger.info("Baseline complete: Hit@5=%.4f",
+                        baseline_result.get("hit_at_5", 0))
+        except Exception as e:
+            logger.warning(
+                "A/B baseline failed (DeepSeek API may be unavailable): %s", e,
+            )
+            logger.warning("Continuing with RAG-only metrics.")
+            baseline_result = None
+
     # === COMPUTE FINAL METRICS (median over replicates) ===
     final_query_results = replicate_results[-1] if replicate_results else []
     final_metrics = compute_metrics(
@@ -215,6 +239,7 @@ async def run_benchmark(
         replicate_metrics=replicate_metrics,
         startup_ms=startup_ms,
         detected_tools=detected_tools,
+        baseline_result=baseline_result,
     )
     return result
 
@@ -226,15 +251,25 @@ async def _run_query_pass(
     repo_dirs: dict[str, Path],
     top_k: int,
     replicate: int,
+    query_timeout: float = 120.0,
 ) -> list[QueryResult]:
-    """Run all queries once and return per-query results."""
+    """Run all queries once and return per-query results.
+
+    Each query is guarded by ``query_timeout`` (default 120s). When a query
+    exceeds the timeout it is marked with ``error="timeout"`` and a
+    ``latency_ms`` of ``query_timeout * 1000`` so it does not silently
+    vanish from the output.
+    """
     results: list[QueryResult] = []
     for i, q in enumerate(queries):
         repo_dir = repo_dirs.get(q.repo)
         path_arg = str(repo_dir) if repo_dir else None
         calls_before = client.call_count
         try:
-            raw_result = await adapter.query_raw(q.query, top_k=top_k, path=path_arg)
+            raw_result = await asyncio.wait_for(
+                adapter.query_raw(q.query, top_k=top_k, path=path_arg),
+                timeout=query_timeout,
+            )
             search_results = adapter._parse_search_results(raw_result)
 
             returned_files = [r.file_path for r in search_results]
@@ -271,6 +306,46 @@ async def _run_query_pass(
                 replicate + 1, i + 1, len(queries), status, q.id, raw_result.latency_ms,
             )
 
+        except asyncio.TimeoutError:
+            logger.warning(
+                "  rep%d [%d/%d] TIMEOUT %s (%.0fs limit)",
+                replicate + 1, i + 1, len(queries), q.id, query_timeout,
+            )
+            results.append(QueryResult(
+                query_id=q.id,
+                query_text=q.query,
+                query_type=q.type,
+                difficulty=q.difficulty,
+                expected_files=q.expected_files,
+                expected_symbols=q.expected_symbols,
+                returned_files=[],
+                returned_symbols=[],
+                latency_ms=query_timeout * 1000,
+                tool_calls=client.call_count - calls_before,
+                repo=q.repo,
+                error="timeout",
+            ))
+        except (ConnectionError, BrokenPipeError, ProcessLookupError) as e:
+            # MCP server crash — mark as server_error, subsequent queries
+            # will also fail, but we'll still produce partial results.
+            logger.warning(
+                "  rep%d [%d/%d] SERVER_CRASH %s: %s",
+                replicate + 1, i + 1, len(queries), q.id, e,
+            )
+            results.append(QueryResult(
+                query_id=q.id,
+                query_text=q.query,
+                query_type=q.type,
+                difficulty=q.difficulty,
+                expected_files=q.expected_files,
+                expected_symbols=q.expected_symbols,
+                returned_files=[],
+                returned_symbols=[],
+                latency_ms=0,
+                tool_calls=client.call_count - calls_before,
+                repo=q.repo,
+                error="server_error",
+            ))
         except Exception as e:
             logger.warning(
                 "  rep%d [%d/%d] ERROR %s: %s",
@@ -288,6 +363,7 @@ async def _run_query_pass(
                 latency_ms=0,
                 tool_calls=client.call_count - calls_before,
                 repo=q.repo,
+                error=str(e)[:200],
             ))
     return results
 
@@ -423,8 +499,9 @@ def _build_result_json(
     replicate_metrics: list[BenchmarkMetrics],
     startup_ms: float,
     detected_tools: dict[str, str | None],
+    baseline_result: dict | None = None,
 ) -> dict:
-    return {
+    result = {
         "run_id": run_id,
         "bench_version": __version__,
         "dataset_version": "v1",
@@ -477,18 +554,182 @@ def _build_result_json(
         "by_type": metrics.by_type,
         "by_repo": metrics.by_repo,
         "query_details": [
-            {
-                "id": qr.query_id,
-                "type": qr.query_type,
-                "difficulty": qr.difficulty,
-                "repo": qr.repo,
-                "found_file": qr.found_file,
-                "found_symbol": qr.found_symbol,
-                "latency_ms": round(qr.latency_ms, 1),
-                "tool_calls": qr.tool_calls,
-                "returned_files": qr.returned_files[:5],
-                "returned_symbols": [s for s in qr.returned_symbols[:5] if s],
-            }
-            for qr in query_results
+            _query_detail(qr) for qr in query_results
         ],
     }
+
+    # Include A/B baseline results if available
+    if baseline_result is not None:
+        result["baseline"] = baseline_result
+    elif "baseline" not in result:
+        result["baseline"] = None
+
+    return result
+
+
+def _query_detail(qr: QueryResult) -> dict:
+    """Build a query_details entry, including error markers when present."""
+    entry = {
+        "id": qr.query_id,
+        "type": qr.query_type,
+        "difficulty": qr.difficulty,
+        "repo": qr.repo,
+        "found_file": qr.found_file,
+        "found_symbol": qr.found_symbol,
+        "latency_ms": round(qr.latency_ms, 1),
+        "tool_calls": qr.tool_calls,
+        "returned_files": qr.returned_files[:5],
+        "returned_symbols": [s for s in qr.returned_symbols[:5] if s],
+    }
+    if qr.error:
+        entry["error"] = qr.error
+    return entry
+
+
+async def _run_baseline_pass(
+    queries: list[Query],
+    repo_dirs: dict[str, Path],
+    server_config: dict | None = None,
+) -> dict | None:
+    """Run the grep/glob baseline agent against all queries.
+
+    When ``server_config`` contains a ``deepseek`` section with an API key
+    the baseline uses the DeepSeek-powered agent; otherwise it falls back
+    to the local grep/glob strategy from ``baseline.py``.
+
+    Returns a dict with baseline retrieval metrics or ``None`` on failure.
+    """
+    from rag_bench.baseline import run_baseline_search
+    from rag_bench.metrics import (
+        QueryResult,
+        compute_metrics,
+    )
+
+    baseline_results: list[QueryResult] = []
+    deepseek_used = False
+
+    # Check for DeepSeek API key
+    deepseek_cfg = (server_config or {}).get("deepseek") or {}
+    api_key = deepseek_cfg.get("api_key") or os.getenv("DEEPSEEK_API_KEY")
+
+    if api_key:
+        try:
+            logger.info("Using DeepSeek-powered baseline agent")
+            baseline_results = await _run_deepseek_baseline(
+                queries, repo_dirs, api_key, deepseek_cfg,
+            )
+            deepseek_used = True
+        except Exception as e:
+            logger.warning(
+                "DeepSeek baseline failed, falling back to local grep/glob: %s", e,
+            )
+
+    if not deepseek_used:
+        logger.info("Using local grep/glob baseline agent")
+        for q in queries:
+            repo_dir = repo_dirs.get(q.repo)
+            if not repo_dir:
+                baseline_results.append(QueryResult(
+                    query_id=q.id,
+                    query_text=q.query,
+                    query_type=q.type,
+                    difficulty=q.difficulty,
+                    expected_files=q.expected_files,
+                    expected_symbols=q.expected_symbols,
+                    returned_files=[],
+                    returned_symbols=[],
+                    latency_ms=0,
+                    tool_calls=0,
+                    repo=q.repo,
+                    error="no_repo_dir",
+                ))
+                continue
+
+            try:
+                br = run_baseline_search(
+                    query=q.query,
+                    query_type=q.type,
+                    repo_dir=repo_dir,
+                    expected_symbols=q.expected_symbols,
+                )
+                qr = QueryResult(
+                    query_id=q.id,
+                    query_text=q.query,
+                    query_type=q.type,
+                    difficulty=q.difficulty,
+                    expected_files=q.expected_files,
+                    expected_symbols=q.expected_symbols,
+                    returned_files=br.found_files,
+                    returned_symbols=br.found_symbols,
+                    latency_ms=br.total_time_ms,
+                    tool_calls=br.tool_calls,
+                    repo=q.repo,
+                )
+                qr.found_file = any(
+                    any(file_matches(ret, exp) for ret in br.found_files[:5])
+                    for exp in q.expected_files
+                )
+                qr.found_symbol = any(
+                    symbol_matches(br.found_symbols[:5], exp)
+                    for exp in q.expected_symbols
+                ) if q.expected_symbols else False
+                baseline_results.append(qr)
+            except Exception as e:
+                logger.debug("Baseline query %s failed: %s", q.id, e)
+                baseline_results.append(QueryResult(
+                    query_id=q.id,
+                    query_text=q.query,
+                    query_type=q.type,
+                    difficulty=q.difficulty,
+                    expected_files=q.expected_files,
+                    expected_symbols=q.expected_symbols,
+                    returned_files=[],
+                    returned_symbols=[],
+                    latency_ms=0,
+                    tool_calls=0,
+                    repo=q.repo,
+                    error=str(e)[:200],
+                ))
+
+    metrics = compute_metrics(baseline_results, ingest_total_sec=0, ingest_total_files=0)
+    return {
+        "retrieval": {
+            "total_queries": metrics.total_queries,
+            "total_hits": metrics.total_hits,
+            "hit_at_1": round(metrics.hit_at_1, 4),
+            "hit_at_3": round(metrics.hit_at_3, 4),
+            "hit_at_5": round(metrics.hit_at_5, 4),
+            "hit_at_10": round(metrics.hit_at_10, 4),
+            "symbol_hit_at_5": round(metrics.symbol_hit_at_5, 4),
+            "mrr": round(metrics.mrr, 4),
+            "latency": {
+                "p50_ms": round(metrics.query_latency_p50_ms, 1),
+                "p95_ms": round(metrics.query_latency_p95_ms, 1),
+                "p99_ms": round(metrics.query_latency_p99_ms, 1),
+                "mean_ms": round(metrics.query_latency_mean_ms, 1),
+            },
+        },
+        "efficiency": {
+            "avg_tool_calls": round(metrics.avg_tool_calls, 2),
+        },
+        "composite_score": round(metrics.composite_score, 4),
+        "method": "deepseek" if deepseek_used else "grep_glob",
+    }
+
+
+async def _run_deepseek_baseline(
+    queries: list[Query],
+    repo_dirs: dict[str, Path],
+    api_key: str,
+    deepseek_cfg: dict,
+) -> list[QueryResult]:
+    """Run the DeepSeek-powered baseline agent.
+
+    This is a stub — the full implementation lives in the
+    ``m1-ab-baseline-agent`` feature. Raises ``NotImplementedError``
+    so the caller falls back to local grep/glob.
+    """
+    raise NotImplementedError(
+        "DeepSeek baseline agent not yet implemented. "
+        "Use local grep/glob baseline or wait for m1-ab-baseline-agent."
+    )

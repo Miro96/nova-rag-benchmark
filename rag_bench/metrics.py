@@ -29,6 +29,7 @@ class QueryResult:
     found_file: bool = False
     found_symbol: bool = False
     repo: str = ""
+    error: str = ""  # non-empty when query failed (timeout, server crash, etc.)
 
 
 @dataclass
