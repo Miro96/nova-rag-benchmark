@@ -5,11 +5,26 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import sys
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_command_parts(command: str, args: list[str]) -> list[str]:
+    """Split a command string and substitute the current interpreter for `python`.
+
+    Presets routinely declare `python -m foo` so the user doesn't have to know
+    the absolute interpreter path, but `subprocess` resolves bare `python` via
+    PATH which can pick up the system interpreter rather than the venv that
+    has the target package installed.
+    """
+    parts = command.split() + list(args or [])
+    if parts and parts[0] in ("python", "python3"):
+        parts[0] = sys.executable
+    return parts
 
 
 @dataclass
@@ -48,7 +63,7 @@ class MCPClient:
 
     async def start(self) -> None:
         """Start the MCP server subprocess and initialize."""
-        cmd_parts = self.command.split() + self.args
+        cmd_parts = _resolve_command_parts(self.command, self.args)
         self._process = await asyncio.create_subprocess_exec(
             *cmd_parts,
             stdin=asyncio.subprocess.PIPE,

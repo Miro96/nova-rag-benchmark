@@ -1,16 +1,16 @@
 {
   "name": "nova-rag",
   "git_url": "https://github.com/user/nova-rag",
-  "command": "python -m nova_rag.server",
+  "command": "python -m nova_rag",
   "transport": "stdio",
   "tool_mapping": {
     "ingest": {
-      "tool": "index_directory",
+      "tool": "rag_index",
       "params": {"path": "{path}"}
     },
     "query": {
       "tool": "code_search",
-      "params": {"query": "{query}", "limit": "{top_k}"}
+      "params": {"query": "{query}", "top_k": "{top_k}"}
     }
   }
 }

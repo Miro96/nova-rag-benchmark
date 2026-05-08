@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from pathlib import Path
 
 import click
@@ -29,8 +30,6 @@ def run(preset, config, command, transport, repo, ab_baseline, top_k, output):
     from rag_bench.runner import run_benchmark
 
     server_config = _resolve_server_config(preset, config, command, transport)
-    if not server_config:
-        raise click.ClickException("Provide --preset, --config, or --command")
 
     result = asyncio.run(run_benchmark(
         server_config=server_config,
@@ -100,25 +99,101 @@ def serve(port, host):
     uvicorn.run(app, host=host, port=port)
 
 
+@cli.command()
+@click.option("--preset", help="Preset name to validate (e.g. nova-rag).")
+@click.option("--config", type=click.Path(exists=True), help="Custom server config JSON.")
+@click.option("--command", help="Server launch command (auto-detect mode).")
+@click.option("--transport", default="stdio", type=click.Choice(["stdio", "sse"]))
+@click.option(
+    "--config-only",
+    is_flag=True,
+    help="Only validate preset structure; don't launch the MCP server.",
+)
+def validate(preset, config, command, transport, config_only):
+    """Dry-run a preset: load it, optionally start the server, and report tool compatibility."""
+    server_config = _resolve_server_config(preset, config, command, transport)
+
+    click.echo(f"Preset: {server_config.get('name', 'custom')}")
+    click.echo(f"Command: {server_config.get('command', '')}")
+    click.echo(f"Transport: {server_config.get('transport', 'stdio')}")
+
+    mapping = server_config.get("tool_mapping", {}) or {}
+    if mapping:
+        click.echo("Configured tool mapping:")
+        for slot in ("ingest", "query", "clear", "status"):
+            if slot in mapping:
+                tool_name = mapping[slot].get("tool", "?")
+                params = mapping[slot].get("params", {})
+                click.echo(f"  {slot}: {tool_name}  params={params}")
+    else:
+        click.echo("No preset tool_mapping; will rely on auto-detection.")
+
+    if config_only:
+        click.echo("Config-only check passed.")
+        return
+
+    asyncio.run(_validate_against_server(server_config))
+
+
+async def _validate_against_server(server_config):
+    from rag_bench.adapter import RAGAdapter
+    from rag_bench.mcp_client import create_client
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+    client = create_client(server_config)
+    async with client:
+        adapter = RAGAdapter(client, server_config)
+        detected = await adapter.detect_tools()
+        click.echo("\nDetected tools:")
+        for slot, name in detected.items():
+            status = "OK" if name else "MISSING"
+            click.echo(f"  {slot}: {name or '(none)'}  [{status}]")
+
+        if not detected.get("ingest"):
+            raise click.ClickException("No ingest tool detected on server.")
+        if not detected.get("query"):
+            raise click.ClickException("No query tool detected on server.")
+
+        click.echo("\nResolved param mappings:")
+        click.echo(f"  ingest params: {adapter._ingest_params}")
+        click.echo(f"  query params:  {adapter._query_params}")
+        click.echo("\nValidation passed.")
+
+
 def _resolve_server_config(preset, config, command, transport):
+    if not (preset or config or command):
+        raise click.ClickException("Provide --preset, --config, or --command")
     if config:
         return json.loads(Path(config).read_text())
     if preset:
-        return _load_preset(preset)
-    if command:
-        return {
-            "name": "custom",
-            "command": command,
-            "transport": transport,
-        }
-    return None
+        loaded = _load_preset(preset)
+        if loaded is None:
+            available = sorted(_available_presets())
+            raise click.ClickException(
+                f"Preset '{preset}' not found. Available presets: "
+                + (", ".join(available) if available else "(none)")
+            )
+        return loaded
+    return {
+        "name": "custom",
+        "command": command,
+        "transport": transport,
+    }
+
+
+def _preset_dir() -> Path:
+    return Path(__file__).parent / "presets"
+
+
+def _available_presets() -> list[str]:
+    return [p.stem.replace("_", "-") for p in _preset_dir().glob("*.json")]
 
 
 def _load_preset(name):
-    preset_dir = Path(__file__).parent / "presets"
+    preset_dir = _preset_dir()
     path = preset_dir / f"{name.replace('-', '_')}.json"
     if not path.exists():
-        # try with dashes
         path = preset_dir / f"{name}.json"
     if path.exists():
         return json.loads(path.read_text())
