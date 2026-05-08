@@ -561,8 +561,28 @@ def _build_result_json(
     # Include A/B baseline results if available
     if baseline_result is not None:
         result["baseline"] = baseline_result
-    elif "baseline" not in result:
+
+        # Build RAG metrics dict for delta computation
+        rag_metrics = {
+            "retrieval": {
+                "hit_at_5": metrics.hit_at_5,
+                "symbol_hit_at_5": metrics.symbol_hit_at_5,
+                "mrr": metrics.mrr,
+                "latency": {
+                    "p50_ms": metrics.query_latency_p50_ms,
+                    "p95_ms": metrics.query_latency_p95_ms,
+                    "mean_ms": metrics.query_latency_mean_ms,
+                },
+            },
+            "efficiency": {
+                "avg_tool_calls": metrics.avg_tool_calls,
+            },
+            "composite_score": metrics.composite_score,
+        }
+        result["ab_comparison"] = _compute_ab_deltas(rag_metrics, baseline_result)
+    else:
         result["baseline"] = None
+        result["ab_comparison"] = None
 
     return result
 
@@ -723,13 +743,156 @@ async def _run_deepseek_baseline(
     api_key: str,
     deepseek_cfg: dict,
 ) -> list[QueryResult]:
-    """Run the DeepSeek-powered baseline agent.
+    """Run the DeepSeek-powered baseline agent for each query.
 
-    This is a stub — the full implementation lives in the
-    ``m1-ab-baseline-agent`` feature. Raises ``NotImplementedError``
-    so the caller falls back to local grep/glob.
+    For each query the agent receives a file listing of the target repo and
+    can call grep / glob / read_file tools (via DeepSeek function calling) to
+    find matching files — without any RAG or MCP involvement.
+
+    Returns a list of ``QueryResult`` objects, one per query.
     """
-    raise NotImplementedError(
-        "DeepSeek baseline agent not yet implemented. "
-        "Use local grep/glob baseline or wait for m1-ab-baseline-agent."
+    from rag_bench.baseline import DeepSeekBaselineAgent
+
+    model = deepseek_cfg.get("model", "deepseek-v4-flash")
+    base_url = deepseek_cfg.get("base_url", "https://api.deepseek.com/v1")
+    max_iterations = deepseek_cfg.get("max_iterations", 5)
+    timeout = deepseek_cfg.get("timeout", 120.0)
+
+    agent = DeepSeekBaselineAgent(
+        api_key=api_key,
+        model=model,
+        base_url=base_url,
+        max_iterations=max_iterations,
+        timeout=timeout,
     )
+
+    results: list[QueryResult] = []
+
+    for q in queries:
+        repo_dir = repo_dirs.get(q.repo)
+        if not repo_dir:
+            results.append(QueryResult(
+                query_id=q.id,
+                query_text=q.query,
+                query_type=q.type,
+                difficulty=q.difficulty,
+                expected_files=q.expected_files,
+                expected_symbols=q.expected_symbols,
+                returned_files=[],
+                returned_symbols=[],
+                latency_ms=0,
+                tool_calls=0,
+                repo=q.repo,
+                error="no_repo_dir",
+            ))
+            continue
+
+        try:
+            sr = await agent.search(query=q.query, repo_dir=repo_dir)
+
+            qr = QueryResult(
+                query_id=q.id,
+                query_text=q.query,
+                query_type=q.type,
+                difficulty=q.difficulty,
+                expected_files=q.expected_files,
+                expected_symbols=q.expected_symbols,
+                returned_files=sr["found_files"],
+                returned_symbols=sr["found_symbols"],
+                latency_ms=sr["total_time_ms"],
+                tool_calls=sr["tool_calls"],
+                repo=q.repo,
+            )
+
+            qr.found_file = any(
+                any(file_matches(ret, exp) for ret in sr["found_files"][:5])
+                for exp in q.expected_files
+            )
+            qr.found_symbol = any(
+                symbol_matches(sr["found_symbols"][:5], exp)
+                for exp in q.expected_symbols
+            ) if q.expected_symbols else False
+
+            results.append(qr)
+            logger.info(
+                "  baseline %s %s (%.0fms, %d tool_calls)",
+                "✓" if qr.found_file else "✗",
+                q.id,
+                sr["total_time_ms"],
+                sr["tool_calls"],
+            )
+
+        except Exception as e:
+            logger.warning("Baseline query %s failed: %s", q.id, e)
+            results.append(QueryResult(
+                query_id=q.id,
+                query_text=q.query,
+                query_type=q.type,
+                difficulty=q.difficulty,
+                expected_files=q.expected_files,
+                expected_symbols=q.expected_symbols,
+                returned_files=[],
+                returned_symbols=[],
+                latency_ms=0,
+                tool_calls=0,
+                repo=q.repo,
+                error=str(e)[:200],
+            ))
+
+    return results
+
+
+def _compute_ab_deltas(
+    rag_metrics: dict,
+    baseline_metrics: dict | None,
+) -> dict | None:
+    """Compute per-metric deltas between RAG and baseline.
+
+    Deltas are ``baseline - rag`` for latency / tool_calls (so a positive
+    value means RAG is faster / more efficient), and ``rag - baseline`` for
+    quality metrics (so positive means RAG is better).
+
+    Returns ``None`` when *baseline_metrics* is ``None``.
+    """
+    if baseline_metrics is None:
+        return None
+
+    b_ret = baseline_metrics.get("retrieval", {})
+    b_eff = baseline_metrics.get("efficiency", {})
+    b_lat = b_ret.get("latency", {})
+
+    r_ret = rag_metrics.get("retrieval", {})
+    r_eff = rag_metrics.get("efficiency", {})
+    r_lat = r_ret.get("latency", {})
+
+    def _d(val: float | None, precision: int = 4) -> float | None:
+        return round(val, precision) if val is not None else None
+
+    # Quality: rag - baseline (positive = RAG better)
+    hit_at_5_delta = _d(r_ret.get("hit_at_5", 0) - b_ret.get("hit_at_5", 0))
+    symbol_hit_at_5_delta = _d(r_ret.get("symbol_hit_at_5", 0) - b_ret.get("symbol_hit_at_5", 0))
+    mrr_delta = _d(r_ret.get("mrr", 0) - b_ret.get("mrr", 0))
+
+    # Latency: baseline - rag (positive = RAG faster)
+    latency_p50_delta = _d(b_lat.get("p50_ms", 0) - r_lat.get("p50_ms", 0), 1)
+    latency_p95_delta = _d(b_lat.get("p95_ms", 0) - r_lat.get("p95_ms", 0), 1)
+    latency_mean_delta = _d(b_lat.get("mean_ms", 0) - r_lat.get("mean_ms", 0), 1)
+
+    # Efficiency: baseline tool_calls - rag tool_calls (positive = RAG more efficient)
+    tool_calls_delta = _d(b_eff.get("avg_tool_calls", 0) - r_eff.get("avg_tool_calls", 0), 2)
+
+    # Composite: rag - baseline
+    composite_score_delta = _d(
+        rag_metrics.get("composite_score", 0) - baseline_metrics.get("composite_score", 0),
+    )
+
+    return {
+        "hit_at_5_delta": hit_at_5_delta,
+        "symbol_hit_at_5_delta": symbol_hit_at_5_delta,
+        "mrr_delta": mrr_delta,
+        "latency_p50_delta": latency_p50_delta,
+        "latency_p95_delta": latency_p95_delta,
+        "latency_mean_delta": latency_mean_delta,
+        "tool_calls_delta": tool_calls_delta,
+        "composite_score_delta": composite_score_delta,
+    }
