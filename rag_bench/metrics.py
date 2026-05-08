@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import math
+import os
 import re
+import threading
 from dataclasses import dataclass, field
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -214,6 +219,110 @@ def compute_percentile(values: list[float], p: float) -> float:
     return sorted_vals[lower] * (1 - frac) + sorted_vals[upper] * frac
 
 
+def compute_latency_stats(latencies: list[float]) -> dict[str, float]:
+    """Compute p50/p95/p99/mean over successful queries.
+
+    Latencies <= 0 are treated as failed queries (e.g. MCP errors recorded
+    with latency_ms=0) and excluded so they don't pull percentiles down to
+    zero. When every query failed all stats are 0.
+    """
+    valid = [v for v in latencies if v > 0]
+    if not valid:
+        return {"p50_ms": 0.0, "p95_ms": 0.0, "p99_ms": 0.0, "mean_ms": 0.0}
+    return {
+        "p50_ms": compute_percentile(valid, 50),
+        "p95_ms": compute_percentile(valid, 95),
+        "p99_ms": compute_percentile(valid, 99),
+        "mean_ms": sum(valid) / len(valid),
+    }
+
+
+def directory_size_mb(path: str | os.PathLike[str] | None) -> float:
+    """Recursively sum the on-disk size of a file or directory, in MB.
+
+    Returns 0.0 when the path is missing, empty, or unreadable. Symlinks are
+    not followed so cyclic links do not blow up the walk. Used to measure
+    index size for servers that store data on disk (e.g. nova-rag's
+    ``~/.nova-rag/`` tree).
+    """
+    if not path:
+        return 0.0
+    p = Path(os.path.expanduser(str(path)))
+    if not p.exists():
+        return 0.0
+    total = 0
+    try:
+        if p.is_file():
+            total = p.stat().st_size
+        else:
+            for entry in p.rglob("*"):
+                try:
+                    if entry.is_symlink() or not entry.is_file():
+                        continue
+                    total += entry.stat().st_size
+                except OSError:
+                    continue
+    except OSError as exc:
+        logger.debug("directory_size_mb(%s) failed: %s", p, exc)
+        return 0.0
+    return total / (1024 * 1024)
+
+
+class MemorySampler:
+    """Background sampler that tracks peak RSS of a process.
+
+    Periodic sampling avoids the ``max(before, after)`` blind spot where a
+    transient peak in the middle of ingest/query is missed because RSS has
+    already been released by the time the phase ends. Safe to start/stop
+    multiple times; ``peak_mb`` only ever monotonically increases.
+    """
+
+    def __init__(self, pid: int | None, interval_sec: float = 0.1) -> None:
+        self.pid = pid
+        self.interval_sec = max(0.01, float(interval_sec))
+        self.peak_mb: float = 0.0
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def sample(self) -> float:
+        """Take a single RSS sample and update peak_mb. Returns current MB."""
+        if not self.pid:
+            return 0.0
+        try:
+            import psutil
+
+            mb = psutil.Process(self.pid).memory_info().rss / (1024 * 1024)
+        except Exception:
+            return 0.0
+        if mb > self.peak_mb:
+            self.peak_mb = mb
+        return mb
+
+    def start(self) -> None:
+        if self._thread and self._thread.is_alive():
+            return
+        self.sample()
+        self._stop.clear()
+        self._thread = threading.Thread(
+            target=self._run, name="MemorySampler", daemon=True,
+        )
+        self._thread.start()
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            self.sample()
+            self._stop.wait(self.interval_sec)
+
+    def stop(self) -> float:
+        """Stop sampling, take a final sample, and return the peak in MB."""
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=2.0)
+            self._thread = None
+        self.sample()
+        return self.peak_mb
+
+
 def compute_metrics(
     results: list[QueryResult],
     ingest_total_sec: float = 0.0,
@@ -222,7 +331,13 @@ def compute_metrics(
     ram_peak_mb: float = 0.0,
 ) -> BenchmarkMetrics:
     """Compute all metrics from query results."""
-    latencies = [r.latency_ms for r in results]
+    latency_stats = compute_latency_stats([r.latency_ms for r in results])
+
+    files_per_sec = (
+        ingest_total_files / ingest_total_sec
+        if ingest_total_sec > 0 and ingest_total_files > 0
+        else 0.0
+    )
 
     metrics = BenchmarkMetrics(
         hit_at_1=compute_hit_at_k(results, 1),
@@ -231,12 +346,12 @@ def compute_metrics(
         hit_at_10=compute_hit_at_k(results, 10),
         symbol_hit_at_5=compute_symbol_hit_at_k(results, 5),
         mrr=compute_mrr(results),
-        query_latency_p50_ms=compute_percentile(latencies, 50),
-        query_latency_p95_ms=compute_percentile(latencies, 95),
-        query_latency_p99_ms=compute_percentile(latencies, 99),
-        query_latency_mean_ms=sum(latencies) / len(latencies) if latencies else 0.0,
+        query_latency_p50_ms=latency_stats["p50_ms"],
+        query_latency_p95_ms=latency_stats["p95_ms"],
+        query_latency_p99_ms=latency_stats["p99_ms"],
+        query_latency_mean_ms=latency_stats["mean_ms"],
         ingest_total_sec=ingest_total_sec,
-        ingest_files_per_sec=ingest_total_files / ingest_total_sec if ingest_total_sec > 0 else 0.0,
+        ingest_files_per_sec=files_per_sec,
         ingest_total_files=ingest_total_files,
         index_size_mb=index_size_mb,
         ram_peak_mb=ram_peak_mb,
@@ -260,13 +375,13 @@ def compute_metrics(
 
         breakdown = {}
         for key, group in groups.items():
-            group_latencies = [r.latency_ms for r in group]
+            group_stats = compute_latency_stats([r.latency_ms for r in group])
             breakdown[key] = {
                 "count": len(group),
                 "hit_at_5": compute_hit_at_k(group, 5),
                 "symbol_hit_at_5": compute_symbol_hit_at_k(group, 5),
                 "mrr": compute_mrr(group),
-                "latency_p50_ms": compute_percentile(group_latencies, 50),
+                "latency_p50_ms": group_stats["p50_ms"],
             }
         setattr(metrics, group_key, breakdown)
 

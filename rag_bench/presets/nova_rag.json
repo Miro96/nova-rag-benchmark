@@ -3,6 +3,7 @@
   "git_url": "https://github.com/user/nova-rag",
   "command": "python -m nova_rag",
   "transport": "stdio",
+  "index_dir": "~/.nova-rag",
   "tool_mapping": {
     "ingest": {
       "tool": "rag_index",

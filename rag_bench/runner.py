@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import platform
 import time
 import uuid
@@ -22,8 +23,10 @@ from rag_bench.datasets.loader import (
 from rag_bench.mcp_client import MCPClient, create_client
 from rag_bench.metrics import (
     BenchmarkMetrics,
+    MemorySampler,
     QueryResult,
     compute_metrics,
+    directory_size_mb,
     file_matches,
     symbol_matches,
 )
@@ -61,113 +64,119 @@ async def run_benchmark(
 
     # Start MCP server
     client = create_client(server_config)
-    async with client:
-        adapter = RAGAdapter(client, server_config)
-        detected = await adapter.detect_tools()
-        logger.info("Detected tools: %s", detected)
+    sampler: MemorySampler | None = None
+    ram_peak = 0.0
+    ingest_sec = 0.0
+    total_files = 0
+    index_size_mb = 0.0
+    query_results: list[QueryResult] = []
 
-        # === INGEST PHASE ===
-        logger.info("=== INGEST PHASE ===")
-        process = client._process
-        ram_before = _get_process_memory(process.pid) if process else 0
+    try:
+        async with client:
+            adapter = RAGAdapter(client, server_config)
+            detected = await adapter.detect_tools()
+            logger.info("Detected tools: %s", detected)
 
-        ingest_start = time.perf_counter()
-        total_files = 0
+            # === INGEST PHASE ===
+            logger.info("=== INGEST PHASE ===")
+            process = client._process
+            sampler = MemorySampler(process.pid if process else None)
+            sampler.start()
 
-        for repo in repos:
-            repo_dir = repo_dirs[repo.name]
-            files = get_repo_files(repo_dir)
-            logger.info("Ingesting %s (%d files)...", repo.name, len(files))
+            ingest_start = time.perf_counter()
 
-            # Try directory ingest first
-            try:
-                await adapter.ingest_directory(str(repo_dir))
-                total_files += len(files)
-                logger.info("Ingested %s via directory ingest", repo.name)
-            except (RuntimeError, Exception) as e:
-                logger.info("Directory ingest failed (%s), trying file-by-file...", e)
-                for f in files:
-                    try:
-                        await adapter.ingest_file(str(f))
-                        total_files += 1
-                    except Exception as fe:
-                        logger.debug("Failed to ingest %s: %s", f, fe)
+            for repo in repos:
+                repo_dir = repo_dirs[repo.name]
+                files = get_repo_files(repo_dir)
+                logger.info("Ingesting %s (%d files)...", repo.name, len(files))
 
-        ingest_sec = time.perf_counter() - ingest_start
-        ram_after = _get_process_memory(process.pid) if process else 0
-        ram_peak = max(ram_after, ram_before)
+                try:
+                    await adapter.ingest_directory(str(repo_dir))
+                    total_files += len(files)
+                    logger.info("Ingested %s via directory ingest", repo.name)
+                except (RuntimeError, Exception) as e:
+                    logger.info("Directory ingest failed (%s), trying file-by-file...", e)
+                    for f in files:
+                        try:
+                            await adapter.ingest_file(str(f))
+                            total_files += 1
+                        except Exception as fe:
+                            logger.debug("Failed to ingest %s: %s", f, fe)
 
-        # Measure index size
-        index_size_mb = _estimate_index_size(server_config)
+            ingest_sec = time.perf_counter() - ingest_start
 
-        logger.info(
-            "Ingest done: %d files in %.1fs (%.1f files/s)",
-            total_files, ingest_sec, total_files / ingest_sec if ingest_sec > 0 else 0,
-        )
+            index_size_mb = _estimate_index_size(server_config, repo_dirs)
 
-        # === WARMUP ===
-        logger.info("=== WARMUP (5 queries) ===")
-        for q in queries[:5]:
-            try:
-                await adapter.query(q.query, top_k=top_k)
-            except Exception as e:
-                logger.debug("Warmup query failed: %s", e)
+            logger.info(
+                "Ingest done: %d files in %.1fs (%.1f files/s)",
+                total_files, ingest_sec,
+                total_files / ingest_sec if ingest_sec > 0 else 0,
+            )
 
-        # === BENCHMARK PHASE ===
-        logger.info("=== BENCHMARK PHASE (%d queries) ===", len(queries))
-        query_results = []
+            # === WARMUP ===
+            logger.info("=== WARMUP (5 queries) ===")
+            for q in queries[:5]:
+                try:
+                    await adapter.query(q.query, top_k=top_k)
+                except Exception as e:
+                    logger.debug("Warmup query failed: %s", e)
 
-        for i, q in enumerate(queries):
-            try:
-                raw_result = await adapter.query_raw(q.query, top_k=top_k)
-                search_results = adapter._parse_search_results(raw_result)
+            # === BENCHMARK PHASE ===
+            logger.info("=== BENCHMARK PHASE (%d queries) ===", len(queries))
 
-                returned_files = [r.file_path for r in search_results]
-                returned_symbols = [r.symbol for r in search_results if r.symbol]
+            for i, q in enumerate(queries):
+                try:
+                    raw_result = await adapter.query_raw(q.query, top_k=top_k)
+                    search_results = adapter._parse_search_results(raw_result)
 
-                qr = QueryResult(
-                    query_id=q.id,
-                    query_text=q.query,
-                    query_type=q.type,
-                    difficulty=q.difficulty,
-                    expected_files=q.expected_files,
-                    expected_symbols=q.expected_symbols,
-                    returned_files=returned_files,
-                    returned_symbols=returned_symbols,
-                    latency_ms=raw_result.latency_ms,
-                )
+                    returned_files = [r.file_path for r in search_results]
+                    returned_symbols = [r.symbol for r in search_results if r.symbol]
 
-                # Check hits
-                qr.found_file = any(
-                    any(file_matches(ret, exp) for ret in returned_files[:5])
-                    for exp in q.expected_files
-                )
-                qr.found_symbol = any(
-                    symbol_matches(returned_symbols[:5], exp)
-                    for exp in q.expected_symbols
-                ) if q.expected_symbols else False
+                    qr = QueryResult(
+                        query_id=q.id,
+                        query_text=q.query,
+                        query_type=q.type,
+                        difficulty=q.difficulty,
+                        expected_files=q.expected_files,
+                        expected_symbols=q.expected_symbols,
+                        returned_files=returned_files,
+                        returned_symbols=returned_symbols,
+                        latency_ms=raw_result.latency_ms,
+                    )
 
-                query_results.append(qr)
+                    qr.found_file = any(
+                        any(file_matches(ret, exp) for ret in returned_files[:5])
+                        for exp in q.expected_files
+                    )
+                    qr.found_symbol = any(
+                        symbol_matches(returned_symbols[:5], exp)
+                        for exp in q.expected_symbols
+                    ) if q.expected_symbols else False
 
-                status = "✓" if qr.found_file else "✗"
-                logger.info(
-                    "  [%d/%d] %s %s (%.0fms)",
-                    i + 1, len(queries), status, q.id, raw_result.latency_ms,
-                )
+                    query_results.append(qr)
 
-            except Exception as e:
-                logger.warning("  [%d/%d] ERROR %s: %s", i + 1, len(queries), q.id, e)
-                query_results.append(QueryResult(
-                    query_id=q.id,
-                    query_text=q.query,
-                    query_type=q.type,
-                    difficulty=q.difficulty,
-                    expected_files=q.expected_files,
-                    expected_symbols=q.expected_symbols,
-                    returned_files=[],
-                    returned_symbols=[],
-                    latency_ms=0,
-                ))
+                    status = "✓" if qr.found_file else "✗"
+                    logger.info(
+                        "  [%d/%d] %s %s (%.0fms)",
+                        i + 1, len(queries), status, q.id, raw_result.latency_ms,
+                    )
+
+                except Exception as e:
+                    logger.warning("  [%d/%d] ERROR %s: %s", i + 1, len(queries), q.id, e)
+                    query_results.append(QueryResult(
+                        query_id=q.id,
+                        query_text=q.query,
+                        query_type=q.type,
+                        difficulty=q.difficulty,
+                        expected_files=q.expected_files,
+                        expected_symbols=q.expected_symbols,
+                        returned_files=[],
+                        returned_symbols=[],
+                        latency_ms=0,
+                    ))
+    finally:
+        if sampler is not None:
+            ram_peak = sampler.stop()
 
     # === COMPUTE METRICS ===
     metrics = compute_metrics(
@@ -198,10 +207,47 @@ def _get_process_memory(pid: int) -> float:
         return 0.0
 
 
-def _estimate_index_size(server_config: dict) -> float:
-    """Try to estimate index size on disk."""
-    # This is server-specific; return 0 if we can't detect
-    return 0.0
+def _estimate_index_size(
+    server_config: dict,
+    repo_dirs: dict[str, Path] | None = None,
+) -> float:
+    """Estimate the on-disk size of the server's index in MB.
+
+    Resolution order (first non-zero result wins):
+      1. ``server_config['index_dir']`` — explicit override.
+      2. ``server_config['index_dirs']`` — list of paths to sum.
+      3. Per-repo ``<repo>/.nova-rag`` (if a repo's project keeps state in tree).
+      4. ``$NOVA_RAG_DATA_DIR`` if set.
+      5. ``~/.nova-rag/`` — nova-rag's default cache location.
+
+    Returns 0.0 if no index can be found on disk.
+    """
+    explicit = server_config.get("index_dir")
+    if explicit:
+        size = directory_size_mb(explicit)
+        if size > 0:
+            return size
+
+    paths = server_config.get("index_dirs") or []
+    if paths:
+        total = sum(directory_size_mb(p) for p in paths)
+        if total > 0:
+            return total
+
+    if repo_dirs:
+        per_repo = sum(
+            directory_size_mb(Path(d) / ".nova-rag") for d in repo_dirs.values()
+        )
+        if per_repo > 0:
+            return per_repo
+
+    env_dir = os.getenv("NOVA_RAG_DATA_DIR")
+    if env_dir:
+        size = directory_size_mb(env_dir)
+        if size > 0:
+            return size
+
+    return directory_size_mb(Path.home() / ".nova-rag")
 
 
 def _build_result_json(
