@@ -274,6 +274,131 @@ class TestLeaderboardSortLimit:
         response = test_client.get("/api/leaderboard?limit=4")
         assert len(response.json()["entries"]) <= 4
 
+    def test_sort_by_query_latency_p50_ms_asc(self, test_client):
+        """?sort_by=query_latency_p50_ms&order=asc sorts by P50 ascending."""
+        for i in range(3):
+            payload = _valid_payload(run_id=str(uuid.uuid4()))
+            payload["retrieval"]["latency"]["p50_ms"] = 100.0 * (i + 1)
+            test_client.post("/api/submit", json=payload)
+
+        response = test_client.get(
+            "/api/leaderboard?sort_by=query_latency_p50_ms&order=asc"
+        )
+        entries = response.json()["entries"]
+        latencies = [e["query_latency_p50_ms"] for e in entries]
+        assert latencies == sorted(latencies)
+
+    def test_sort_by_ingest_total_sec_desc(self, test_client):
+        """?sort_by=ingest_total_sec&order=desc sorts by ingest time descending."""
+        for i in range(3):
+            payload = _valid_payload(run_id=str(uuid.uuid4()))
+            payload["ingest"]["total_sec"] = 5.0 * (i + 1)
+            test_client.post("/api/submit", json=payload)
+
+        response = test_client.get(
+            "/api/leaderboard?sort_by=ingest_total_sec&order=desc"
+        )
+        entries = response.json()["entries"]
+        times = [e["ingest_total_sec"] for e in entries]
+        assert times == sorted(times, reverse=True)
+
+    def test_sort_by_hit_at_10_desc(self, test_client):
+        """?sort_by=hit_at_10&order=desc sorts by Hit@10 descending."""
+        for i in range(3):
+            payload = _valid_payload(run_id=str(uuid.uuid4()))
+            payload["retrieval"]["hit_at_10"] = 0.2 * (i + 1)
+            test_client.post("/api/submit", json=payload)
+
+        response = test_client.get(
+            "/api/leaderboard?sort_by=hit_at_10&order=desc"
+        )
+        entries = response.json()["entries"]
+        hits = [e["hit_at_10"] for e in entries]
+        assert hits == sorted(hits, reverse=True)
+
+    def test_sort_by_index_size_mb_asc(self, test_client):
+        """?sort_by=index_size_mb&order=asc sorts by index size ascending."""
+        for i in range(3):
+            payload = _valid_payload(run_id=str(uuid.uuid4()))
+            payload["ingest"]["index_size_mb"] = 10.0 * (i + 1)
+            test_client.post("/api/submit", json=payload)
+
+        response = test_client.get(
+            "/api/leaderboard?sort_by=index_size_mb&order=asc"
+        )
+        entries = response.json()["entries"]
+        sizes = [e["index_size_mb"] for e in entries]
+        assert sizes == sorted(sizes)
+
+    def test_sort_by_avg_tool_calls_desc(self, test_client):
+        """?sort_by=avg_tool_calls&order=desc sorts by tool calls descending."""
+        for i in range(3):
+            payload = _valid_payload(run_id=str(uuid.uuid4()))
+            payload["efficiency"]["avg_tool_calls"] = 1.0 * (i + 1)
+            test_client.post("/api/submit", json=payload)
+
+        response = test_client.get(
+            "/api/leaderboard?sort_by=avg_tool_calls&order=desc"
+        )
+        entries = response.json()["entries"]
+        calls = [e["avg_tool_calls"] for e in entries]
+        assert calls == sorted(calls, reverse=True)
+
+    def test_sort_by_hit_at_3_asc(self, test_client):
+        """?sort_by=hit_at_3&order=asc sorts by Hit@3 ascending."""
+        for i in range(3):
+            payload = _valid_payload(run_id=str(uuid.uuid4()))
+            payload["retrieval"]["hit_at_3"] = 0.15 * (i + 1)
+            test_client.post("/api/submit", json=payload)
+
+        response = test_client.get(
+            "/api/leaderboard?sort_by=hit_at_3&order=asc"
+        )
+        entries = response.json()["entries"]
+        hits = [e["hit_at_3"] for e in entries]
+        assert hits == sorted(hits)
+
+    def test_sort_defaults_to_composite_score_when_no_param(self, test_client):
+        """No sort_by param defaults to composite_score descending."""
+        for i in range(3):
+            payload = _valid_payload(run_id=str(uuid.uuid4()))
+            payload["composite_score"] = 0.1 * (i + 1)
+            test_client.post("/api/submit", json=payload)
+
+        response = test_client.get("/api/leaderboard")
+        entries = response.json()["entries"]
+        scores = [e["composite_score"] for e in entries]
+        assert scores == sorted(scores, reverse=True)
+
+    def test_order_defaults_to_desc(self, test_client):
+        """No order param defaults to descending."""
+        for i in range(3):
+            payload = _valid_payload(run_id=str(uuid.uuid4()))
+            payload["composite_score"] = 0.1 * (i + 1)
+            test_client.post("/api/submit", json=payload)
+
+        response = test_client.get(
+            "/api/leaderboard?sort_by=composite_score"
+        )
+        entries = response.json()["entries"]
+        scores = [e["composite_score"] for e in entries]
+        assert scores == sorted(scores, reverse=True)
+
+    def test_invalid_order_falls_back_to_asc(self, test_client):
+        """Invalid order value falls back to ASC."""
+        for i in range(3):
+            payload = _valid_payload(run_id=str(uuid.uuid4()))
+            payload["composite_score"] = 0.1 * (i + 1)
+            test_client.post("/api/submit", json=payload)
+
+        response = test_client.get(
+            "/api/leaderboard?sort_by=composite_score&order=invalid"
+        )
+        entries = response.json()["entries"]
+        scores = [e["composite_score"] for e in entries]
+        # Should be ascending (fallback from invalid order)
+        assert scores == sorted(scores)
+
 
 # ---------------------------------------------------------------------------
 # VAL-BENCH-LB-007: GET /api/run/unknown → 404

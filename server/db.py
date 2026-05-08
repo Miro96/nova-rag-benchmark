@@ -163,9 +163,15 @@ async def get_leaderboard(
 ) -> list[dict]:
     """Get leaderboard data."""
     valid_sorts = {
-        "composite_score", "hit_at_1", "hit_at_5", "mrr",
-        "symbol_hit_at_5", "query_latency_p50_ms", "query_latency_p95_ms",
-        "ingest_total_sec", "ram_peak_mb", "submitted_at",
+        "composite_score",
+        "hit_at_1", "hit_at_3", "hit_at_5", "hit_at_10",
+        "symbol_hit_at_5", "mrr",
+        "query_latency_p50_ms", "query_latency_p95_ms",
+        "query_latency_p99_ms", "query_latency_mean_ms",
+        "ingest_total_files", "ingest_total_sec", "ingest_files_per_sec",
+        "index_size_mb", "ram_peak_mb",
+        "avg_tool_calls", "total_queries", "total_hits",
+        "submitted_at",
     }
     if sort_by not in valid_sorts:
         sort_by = "composite_score"
