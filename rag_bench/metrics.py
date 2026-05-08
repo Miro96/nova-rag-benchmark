@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 
@@ -73,27 +74,79 @@ def normalize_path(path: str) -> str:
 
 
 def file_matches(returned: str, expected: str) -> bool:
-    """Check if returned file path matches expected (suffix matching)."""
+    """Check if a returned file path matches the expected path.
+
+    Match is suffix-based on path-component boundaries: returned must equal
+    expected or end with "/" + expected. Empty paths never match.
+    """
+    if not returned or not expected:
+        return False
     r = normalize_path(returned)
     e = normalize_path(expected)
-    return r == e or r.endswith(e) or e.endswith(r)
+    if not r or not e:
+        return False
+    return r == e or r.endswith("/" + e)
+
+
+_TOKEN_SPLIT_RE = re.compile(r"[._\-/\s:]+")
+_CAMEL_TOKEN_RE = re.compile(
+    r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+"
+)
+
+
+def tokenize_symbol(name: str) -> set[str]:
+    """Tokenize a symbol name into lowercase tokens.
+
+    Splits on common separators (`.`, `_`, `-`, `/`, whitespace, `:`) and on
+    camelCase/PascalCase boundaries. Returns the set of lowercased tokens so
+    we can compare on whole-token boundaries instead of raw substring.
+    """
+    if not name:
+        return set()
+    tokens: set[str] = set()
+    for chunk in _TOKEN_SPLIT_RE.split(name):
+        if not chunk:
+            continue
+        for piece in _CAMEL_TOKEN_RE.findall(chunk):
+            if piece:
+                tokens.add(piece.lower())
+    return tokens
 
 
 def symbol_matches(returned_symbols: list[str], expected: str) -> bool:
-    """Check if any returned symbol matches expected."""
-    expected_lower = expected.lower()
+    """Check if any returned symbol matches the expected symbol.
+
+    Match is token-boundary aware: every token of `expected` (after splitting
+    on separators and camelCase) must appear as a whole token of a returned
+    symbol. This prevents false positives like "get" matching "target" or
+    "forget" while still allowing "get" to match "getUser".
+    """
+    expected_tokens = tokenize_symbol(expected)
+    if not expected_tokens:
+        return False
     for sym in returned_symbols:
-        if expected_lower in sym.lower() or sym.lower() in expected_lower:
+        if not sym:
+            continue
+        sym_tokens = tokenize_symbol(sym)
+        if expected_tokens.issubset(sym_tokens):
             return True
     return False
 
 
 def compute_hit_at_k(results: list[QueryResult], k: int) -> float:
-    """Compute Hit@K: fraction of queries where correct file is in top-K."""
+    """Compute Hit@K: fraction of queries where the correct file is in top-K.
+
+    Returns a float in [0, 1]. By construction (top-K is a prefix of top-K'
+    for k <= k'), Hit@K is monotonically non-decreasing in k.
+    """
     if not results:
+        return 0.0
+    if k <= 0:
         return 0.0
     hits = 0
     for r in results:
+        if not r.expected_files:
+            continue
         top_k_files = r.returned_files[:k]
         for expected in r.expected_files:
             if any(file_matches(ret, expected) for ret in top_k_files):
@@ -103,33 +156,48 @@ def compute_hit_at_k(results: list[QueryResult], k: int) -> float:
 
 
 def compute_symbol_hit_at_k(results: list[QueryResult], k: int) -> float:
-    """Compute Symbol Hit@K: fraction of queries where correct symbol is in top-K."""
-    if not results:
+    """Compute Symbol Hit@K averaged over queries that have expected symbols.
+
+    Returns a float in [0, 1]. Queries without expected symbols are excluded
+    from the denominator.
+    """
+    if not results or k <= 0:
         return 0.0
     hits = 0
+    total_with_symbols = 0
     for r in results:
-        top_k_symbols = r.returned_symbols[:k]
         if not r.expected_symbols:
             continue
+        total_with_symbols += 1
+        top_k_symbols = r.returned_symbols[:k]
         for expected in r.expected_symbols:
             if symbol_matches(top_k_symbols, expected):
                 hits += 1
                 break
-    total_with_symbols = sum(1 for r in results if r.expected_symbols)
     return hits / total_with_symbols if total_with_symbols else 0.0
 
 
 def compute_mrr(results: list[QueryResult]) -> float:
-    """Compute Mean Reciprocal Rank."""
+    """Compute Mean Reciprocal Rank over queries that have expected files.
+
+    Returns a float in [0, 1]. For each query the reciprocal of the rank of
+    the first matching returned file is used (0 if no match). The mean is
+    over queries with at least one expected file so the value lies in (0, 1]
+    whenever any query produced a hit.
+    """
     if not results:
         return 0.0
     rr_sum = 0.0
+    total = 0
     for r in results:
+        if not r.expected_files:
+            continue
+        total += 1
         for rank, ret_file in enumerate(r.returned_files, 1):
             if any(file_matches(ret_file, exp) for exp in r.expected_files):
                 rr_sum += 1.0 / rank
                 break
-    return rr_sum / len(results)
+    return rr_sum / total if total else 0.0
 
 
 def compute_percentile(values: list[float], p: float) -> float:
