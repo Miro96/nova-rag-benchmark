@@ -5,11 +5,10 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
 
-from server.db import get_leaderboard, get_run, init_db, insert_run
+from server.db import DuplicateRunError, get_leaderboard, get_run, init_db, insert_run
 from server.models import BenchmarkSubmission
 
 
@@ -31,8 +30,27 @@ STATIC_DIR = Path(__file__).parent / "static"
 @app.post("/api/submit")
 async def submit_run(data: BenchmarkSubmission):
     """Submit benchmark results."""
-    run_id = await insert_run(data.model_dump())
+    try:
+        run_id = await insert_run(data.model_dump())
+    except DuplicateRunError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     return {"status": "ok", "run_id": run_id}
+
+
+def _map_row(row: dict) -> dict:
+    """Map DB row fields to API response fields."""
+    # Rename 'id' to 'run_id' for the API response
+    if "id" in row:
+        row["run_id"] = row.pop("id")
+    # Parse JSON fields if stored as strings
+    for field in ("environment", "by_difficulty", "by_type", "repos"):
+        if isinstance(row.get(field), str):
+            try:
+                import json
+                row[field] = json.loads(row[field])
+            except (json.JSONDecodeError, TypeError):
+                pass
+    return row
 
 
 @app.get("/api/leaderboard")
@@ -45,10 +63,9 @@ async def leaderboard(
     rows = await get_leaderboard(sort_by=sort_by, order=order, limit=limit)
     entries = []
     for rank, row in enumerate(rows, 1):
-        entries.append({
-            "rank": rank,
-            **row,
-        })
+        entry = _map_row(dict(row))
+        entry["rank"] = rank
+        entries.append(entry)
     return {"entries": entries, "total": len(entries)}
 
 
@@ -57,8 +74,8 @@ async def run_detail(run_id: str):
     """Get details for a specific run."""
     run = await get_run(run_id)
     if not run:
-        return {"error": "Run not found"}, 404
-    return run
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    return _map_row(dict(run))
 
 
 @app.get("/", response_class=HTMLResponse)

@@ -90,24 +90,40 @@ def compare(presets, repo, top_k):
 
 @cli.command()
 @click.argument("result_files", nargs=-1, type=click.Path(exists=True))
-@click.option("--server-url", default="http://localhost:8080", help="Leaderboard server URL")
+@click.option("--server-url", default="http://127.0.0.1:8080", help="Leaderboard server URL")
 @click.option("--git-url", required=True, help="Git repository URL")
 @click.option("--git-user", required=True, help="Git username")
 def submit(result_files, server_url, git_url, git_user):
     """Submit benchmark results to leaderboard server."""
+    import httpx
     from rag_bench.submit import submit_results
 
     for path in result_files:
         data = json.loads(Path(path).read_text())
         data.setdefault("server", {})["git_url"] = git_url
         data["server"]["git_user"] = git_user
-        asyncio.run(submit_results(server_url, data))
-        click.echo(f"Submitted {path}")
+        try:
+            result = asyncio.run(submit_results(server_url, data))
+            run_id = result.get("run_id", "unknown")
+            click.echo(f"Submitted run_id: {run_id}")
+        except httpx.HTTPStatusError as e:
+            msg = f"Submit failed: HTTP {e.response.status_code}"
+            try:
+                detail = e.response.json().get("detail", "")
+                if detail:
+                    msg += f" — {detail}"
+            except Exception:
+                pass
+            raise click.ClickException(msg) from e
+        except httpx.RequestError as e:
+            raise click.ClickException(
+                f"Could not connect to server at {server_url}: {e}"
+            ) from e
 
 
 @cli.command()
 @click.option("--port", default=8080)
-@click.option("--host", default="0.0.0.0")
+@click.option("--host", default="127.0.0.1", show_default=True)
 def serve(port, host):
     """Start the leaderboard web server."""
     import uvicorn
