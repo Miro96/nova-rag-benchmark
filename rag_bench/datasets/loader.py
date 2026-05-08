@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 DATASETS_DIR = Path(__file__).parent
 REPOS_JSON = DATASETS_DIR / "repos.json"
 QUERIES_DIR = DATASETS_DIR / "queries"
+WARMUP_JSONL = DATASETS_DIR / "warmup.jsonl"
 CACHE_DIR = Path.home() / ".cache" / "rag-bench" / "repos"
 
 
@@ -25,6 +26,12 @@ class Query:
     expected_symbols: list[str]
     difficulty: str
     repo: str
+
+
+@dataclass
+class WarmupQuery:
+    id: str
+    query: str
 
 
 @dataclass
@@ -84,6 +91,27 @@ def load_queries(repo_filter: str | None = None) -> list[Query]:
     logger.info("Loaded %d queries%s", len(queries),
                 f" (repo={repo_filter})" if repo_filter else "")
     return queries
+
+
+def load_warmup_queries() -> list[WarmupQuery]:
+    """Load the dedicated warmup query set.
+
+    Warmup queries live in ``datasets/warmup.jsonl`` and are intentionally
+    disjoint from the scored benchmark set so they can warm caches/JITs
+    without polluting Hit@K or latency measurements with the same items.
+    """
+    if not WARMUP_JSONL.exists():
+        return []
+    items: list[WarmupQuery] = []
+    text = WARMUP_JSONL.read_text().strip()
+    if not text:
+        return items
+    for line in text.split("\n"):
+        if not line.strip():
+            continue
+        data = json.loads(line)
+        items.append(WarmupQuery(id=data["id"], query=data["query"]))
+    return items
 
 
 def get_repo_files(repo_dir: Path, extensions: set[str] | None = None) -> list[Path]:

@@ -24,8 +24,20 @@ def cli():
 @click.option("--repo", help="Run only on specific repo (flask, fastapi, express)")
 @click.option("--ab-baseline", is_flag=True, help="Run A/B comparison vs Grep/Glob baseline")
 @click.option("--top-k", default=10, help="Number of results to request from RAG")
+@click.option(
+    "--replicates",
+    default=3,
+    type=click.IntRange(min=1),
+    help="Number of times to run the benchmark query set; reported metrics are the median across replicates.",
+)
+@click.option(
+    "--clean-index",
+    is_flag=True,
+    help="Wipe any existing nova-rag-style index directory before ingest for a clean reproducible run.",
+)
 @click.option("--output", "-o", type=click.Path(), help="Output JSON path")
-def run(preset, config, command, transport, repo, ab_baseline, top_k, output):
+def run(preset, config, command, transport, repo, ab_baseline, top_k,
+        replicates, clean_index, output):
     """Run benchmark on a RAG MCP server."""
     from rag_bench.runner import run_benchmark
 
@@ -36,6 +48,8 @@ def run(preset, config, command, transport, repo, ab_baseline, top_k, output):
         repo_filter=repo,
         ab_baseline=ab_baseline,
         top_k=top_k,
+        replicates=replicates,
+        clean_index=clean_index,
     ))
 
     output_path = Path(output) if output else Path(f"results/run_{result['run_id']}.json")

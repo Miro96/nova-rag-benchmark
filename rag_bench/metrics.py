@@ -28,6 +28,7 @@ class QueryResult:
     tool_calls: int = 0
     found_file: bool = False
     found_symbol: bool = False
+    repo: str = ""
 
 
 @dataclass
@@ -217,6 +218,19 @@ def compute_percentile(values: list[float], p: float) -> float:
         return sorted_vals[lower]
     frac = idx - lower
     return sorted_vals[lower] * (1 - frac) + sorted_vals[upper] * frac
+
+
+def compute_iqr(values: list[float]) -> float:
+    """Interquartile range (Q3 - Q1) of a list of floats.
+
+    Returns 0.0 for empty inputs or a single point. Used to quantify the
+    dispersion of a metric across replicates.
+    """
+    if len(values) < 2:
+        return 0.0
+    q1 = compute_percentile(values, 25)
+    q3 = compute_percentile(values, 75)
+    return q3 - q1
 
 
 def compute_latency_stats(latencies: list[float]) -> dict[str, float]:
@@ -417,10 +431,13 @@ def compute_metrics(
     for group_key, group_fn in [
         ("by_difficulty", lambda r: r.difficulty),
         ("by_type", lambda r: r.query_type),
+        ("by_repo", lambda r: r.repo),
     ]:
         groups: dict[str, list[QueryResult]] = {}
         for r in results:
             key = group_fn(r)
+            if not key:
+                continue
             groups.setdefault(key, []).append(r)
 
         breakdown = {}

@@ -1,0 +1,5 @@
+{"id": "warmup_001", "query": "where is the main entry point of the application?"}
+{"id": "warmup_002", "query": "show me test fixtures and setup code"}
+{"id": "warmup_003", "query": "how is configuration loaded from environment variables?"}
+{"id": "warmup_004", "query": "find the global error handler implementation"}
+{"id": "warmup_005", "query": "trace the request lifecycle from receipt to response"}

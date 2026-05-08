@@ -5,11 +5,10 @@ from __future__ import annotations
 import logging
 import os
 import platform
+import shutil
 import time
 import uuid
 from pathlib import Path
-
-import psutil
 
 from rag_bench import __version__
 from rag_bench.adapter import RAGAdapter
@@ -19,12 +18,14 @@ from rag_bench.datasets.loader import (
     get_repo_files,
     load_queries,
     load_repos,
+    load_warmup_queries,
 )
-from rag_bench.mcp_client import MCPClient, create_client
+from rag_bench.mcp_client import create_client
 from rag_bench.metrics import (
     BenchmarkMetrics,
     MemorySampler,
     QueryResult,
+    compute_iqr,
     compute_metrics,
     directory_size_mb,
     file_matches,
@@ -35,18 +36,39 @@ from rag_bench.report import print_results_table
 logger = logging.getLogger(__name__)
 
 
+def _nova_rag_data_dir() -> Path:
+    """Resolve the on-disk index directory used by nova-rag-style servers."""
+    return Path(os.getenv("NOVA_RAG_DATA_DIR", str(Path.home() / ".nova-rag")))
+
+
+def clean_nova_rag_index(data_dir: Path | None = None) -> Path:
+    """Delete the nova-rag index directory if it exists.
+
+    Returns the path that was (or would have been) cleaned. Wiping the
+    whole directory clears state from previous runs across different repos
+    so a ``--clean-index`` run starts cold.
+    """
+    target = data_dir or _nova_rag_data_dir()
+    if target.exists():
+        shutil.rmtree(target, ignore_errors=True)
+    return target
+
+
 async def run_benchmark(
     server_config: dict,
     repo_filter: str | None = None,
     ab_baseline: bool = False,
     top_k: int = 10,
+    replicates: int = 3,
+    clean_index: bool = False,
 ) -> dict:
     """Run the full benchmark pipeline."""
-    run_id = uuid.uuid4().hex[:12]
+    run_id = str(uuid.uuid4())
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     logger.info("=== rag-bench run %s ===", run_id)
     logger.info("Server: %s", server_config.get("name", "custom"))
+    logger.info("Replicates: %d  clean_index=%s", replicates, clean_index)
 
     # Load repos and queries
     repos = load_repos()
@@ -57,10 +79,17 @@ async def run_benchmark(
     if not queries:
         raise RuntimeError(f"No queries found{f' for repo {repo_filter}' if repo_filter else ''}")
 
+    warmup_queries = load_warmup_queries()
+
     # Clone repos
     repo_dirs: dict[str, Path] = {}
     for repo in repos:
         repo_dirs[repo.name] = clone_repo(repo)
+
+    # Optionally wipe pre-existing index state for a fresh ingest measurement
+    if clean_index:
+        cleaned = clean_nova_rag_index()
+        logger.info("Cleaned index dir at %s", cleaned)
 
     # Start MCP server
     client = create_client(server_config)
@@ -69,13 +98,21 @@ async def run_benchmark(
     ingest_sec = 0.0
     total_files = 0
     index_size_mb = 0.0
-    query_results: list[QueryResult] = []
+    startup_ms = 0.0
+    detected_tools: dict[str, str | None] = {}
+
+    replicate_results: list[list[QueryResult]] = []
+    replicate_metrics: list[BenchmarkMetrics] = []
 
     try:
         async with client:
+            startup_t0 = time.perf_counter()
             adapter = RAGAdapter(client, server_config)
             detected = await adapter.detect_tools()
+            detected_tools = dict(detected)
+            startup_ms = (time.perf_counter() - startup_t0) * 1000.0
             logger.info("Detected tools: %s", detected)
+            logger.info("Startup (init + tools/list): %.1f ms", startup_ms)
 
             # === INGEST PHASE ===
             logger.info("=== INGEST PHASE ===")
@@ -114,100 +151,224 @@ async def run_benchmark(
             )
 
             # === WARMUP ===
-            logger.info("=== WARMUP (5 queries) ===")
-            for q in queries[:5]:
-                try:
-                    await adapter.query(q.query, top_k=top_k)
-                except Exception as e:
-                    logger.debug("Warmup query failed: %s", e)
+            # Use dedicated warmup queries (disjoint from benchmark) to warm
+            # caches/JITs without polluting Hit@K or latency on real items.
+            logger.info("=== WARMUP (%d queries) ===", len(warmup_queries))
+            for w in warmup_queries:
+                for repo in repos:
+                    repo_dir = repo_dirs[repo.name]
+                    try:
+                        await adapter.query(w.query, top_k=top_k, path=str(repo_dir))
+                    except Exception as e:
+                        logger.debug("Warmup query failed: %s", e)
 
-            # === BENCHMARK PHASE ===
-            logger.info("=== BENCHMARK PHASE (%d queries) ===", len(queries))
-
-            for i, q in enumerate(queries):
-                calls_before = client.call_count
-                try:
-                    raw_result = await adapter.query_raw(q.query, top_k=top_k)
-                    search_results = adapter._parse_search_results(raw_result)
-
-                    returned_files = [r.file_path for r in search_results]
-                    returned_symbols = [r.symbol for r in search_results if r.symbol]
-
-                    qr = QueryResult(
-                        query_id=q.id,
-                        query_text=q.query,
-                        query_type=q.type,
-                        difficulty=q.difficulty,
-                        expected_files=q.expected_files,
-                        expected_symbols=q.expected_symbols,
-                        returned_files=returned_files,
-                        returned_symbols=returned_symbols,
-                        latency_ms=raw_result.latency_ms,
-                        tool_calls=client.call_count - calls_before,
+            # === BENCHMARK PHASE (N replicates) ===
+            for rep in range(replicates):
+                logger.info(
+                    "=== REPLICATE %d/%d (%d queries) ===",
+                    rep + 1, replicates, len(queries),
+                )
+                results = await _run_query_pass(
+                    adapter, client, queries, repo_dirs, top_k=top_k, replicate=rep,
+                )
+                replicate_results.append(results)
+                replicate_metrics.append(
+                    compute_metrics(
+                        results,
+                        ingest_total_sec=ingest_sec,
+                        ingest_total_files=total_files,
+                        index_size_mb=index_size_mb,
+                        ram_peak_mb=0.0,
                     )
-
-                    qr.found_file = any(
-                        any(file_matches(ret, exp) for ret in returned_files[:5])
-                        for exp in q.expected_files
-                    )
-                    qr.found_symbol = any(
-                        symbol_matches(returned_symbols[:5], exp)
-                        for exp in q.expected_symbols
-                    ) if q.expected_symbols else False
-
-                    query_results.append(qr)
-
-                    status = "✓" if qr.found_file else "✗"
-                    logger.info(
-                        "  [%d/%d] %s %s (%.0fms)",
-                        i + 1, len(queries), status, q.id, raw_result.latency_ms,
-                    )
-
-                except Exception as e:
-                    logger.warning("  [%d/%d] ERROR %s: %s", i + 1, len(queries), q.id, e)
-                    query_results.append(QueryResult(
-                        query_id=q.id,
-                        query_text=q.query,
-                        query_type=q.type,
-                        difficulty=q.difficulty,
-                        expected_files=q.expected_files,
-                        expected_symbols=q.expected_symbols,
-                        returned_files=[],
-                        returned_symbols=[],
-                        latency_ms=0,
-                        tool_calls=client.call_count - calls_before,
-                    ))
+                )
     finally:
         if sampler is not None:
             ram_peak = sampler.stop()
 
-    # === COMPUTE METRICS ===
-    metrics = compute_metrics(
-        query_results,
+    # === COMPUTE FINAL METRICS (median over replicates) ===
+    final_query_results = replicate_results[-1] if replicate_results else []
+    final_metrics = compute_metrics(
+        final_query_results,
         ingest_total_sec=ingest_sec,
         ingest_total_files=total_files,
         index_size_mb=index_size_mb,
         ram_peak_mb=ram_peak,
     )
 
+    # Replace top-level (and breakdown) numeric values with the median across
+    # replicates. The single-replicate object above gives us the structural
+    # template; we then overwrite values metric-by-metric.
+    median_metrics = _median_metrics(replicate_metrics, fallback=final_metrics)
+    final_metrics = _apply_median(final_metrics, median_metrics)
+    final_metrics.ram_peak_mb = ram_peak
+
     # Print results
-    print_results_table(server_config.get("name", "custom"), metrics)
+    print_results_table(server_config.get("name", "custom"), final_metrics)
 
     # Build result JSON
     result = _build_result_json(
-        run_id, server_config, metrics, query_results, repos,
+        run_id=run_id,
+        server_config=server_config,
+        metrics=final_metrics,
+        query_results=final_query_results,
+        repos=repos,
+        replicate_metrics=replicate_metrics,
+        startup_ms=startup_ms,
+        detected_tools=detected_tools,
     )
     return result
 
 
-def _get_process_memory(pid: int) -> float:
-    """Get process memory in MB."""
-    try:
-        proc = psutil.Process(pid)
-        mem = proc.memory_info()
-        return mem.rss / (1024 * 1024)
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
+async def _run_query_pass(
+    adapter: RAGAdapter,
+    client,
+    queries: list[Query],
+    repo_dirs: dict[str, Path],
+    top_k: int,
+    replicate: int,
+) -> list[QueryResult]:
+    """Run all queries once and return per-query results."""
+    results: list[QueryResult] = []
+    for i, q in enumerate(queries):
+        repo_dir = repo_dirs.get(q.repo)
+        path_arg = str(repo_dir) if repo_dir else None
+        calls_before = client.call_count
+        try:
+            raw_result = await adapter.query_raw(q.query, top_k=top_k, path=path_arg)
+            search_results = adapter._parse_search_results(raw_result)
+
+            returned_files = [r.file_path for r in search_results]
+            returned_symbols = [r.symbol for r in search_results if r.symbol]
+
+            qr = QueryResult(
+                query_id=q.id,
+                query_text=q.query,
+                query_type=q.type,
+                difficulty=q.difficulty,
+                expected_files=q.expected_files,
+                expected_symbols=q.expected_symbols,
+                returned_files=returned_files,
+                returned_symbols=returned_symbols,
+                latency_ms=raw_result.latency_ms,
+                tool_calls=client.call_count - calls_before,
+                repo=q.repo,
+            )
+
+            qr.found_file = any(
+                any(file_matches(ret, exp) for ret in returned_files[:5])
+                for exp in q.expected_files
+            )
+            qr.found_symbol = any(
+                symbol_matches(returned_symbols[:5], exp)
+                for exp in q.expected_symbols
+            ) if q.expected_symbols else False
+
+            results.append(qr)
+
+            status = "✓" if qr.found_file else "✗"
+            logger.info(
+                "  rep%d [%d/%d] %s %s (%.0fms)",
+                replicate + 1, i + 1, len(queries), status, q.id, raw_result.latency_ms,
+            )
+
+        except Exception as e:
+            logger.warning(
+                "  rep%d [%d/%d] ERROR %s: %s",
+                replicate + 1, i + 1, len(queries), q.id, e,
+            )
+            results.append(QueryResult(
+                query_id=q.id,
+                query_text=q.query,
+                query_type=q.type,
+                difficulty=q.difficulty,
+                expected_files=q.expected_files,
+                expected_symbols=q.expected_symbols,
+                returned_files=[],
+                returned_symbols=[],
+                latency_ms=0,
+                tool_calls=client.call_count - calls_before,
+                repo=q.repo,
+            ))
+    return results
+
+
+_MEDIAN_FIELDS: tuple[str, ...] = (
+    "hit_at_1",
+    "hit_at_3",
+    "hit_at_5",
+    "hit_at_10",
+    "symbol_hit_at_5",
+    "mrr",
+    "query_latency_p50_ms",
+    "query_latency_p95_ms",
+    "query_latency_p99_ms",
+    "query_latency_mean_ms",
+    "avg_tool_calls",
+    "composite_score",
+)
+
+
+def _median(values: list[float]) -> float:
+    if not values:
         return 0.0
+    s = sorted(values)
+    n = len(s)
+    mid = n // 2
+    if n % 2 == 1:
+        return s[mid]
+    return (s[mid - 1] + s[mid]) / 2.0
+
+
+def _median_metrics(
+    reps: list[BenchmarkMetrics],
+    fallback: BenchmarkMetrics,
+) -> dict[str, float]:
+    if not reps:
+        return {f: getattr(fallback, f) for f in _MEDIAN_FIELDS}
+    return {
+        f: _median([getattr(r, f) for r in reps]) for f in _MEDIAN_FIELDS
+    }
+
+
+def _apply_median(
+    target: BenchmarkMetrics, median: dict[str, float]
+) -> BenchmarkMetrics:
+    for f, v in median.items():
+        setattr(target, f, v)
+    return target
+
+
+def _replicate_summary(reps: list[BenchmarkMetrics]) -> list[dict]:
+    summary = []
+    for i, m in enumerate(reps):
+        summary.append({
+            "index": i,
+            "hit_at_1": round(m.hit_at_1, 4),
+            "hit_at_3": round(m.hit_at_3, 4),
+            "hit_at_5": round(m.hit_at_5, 4),
+            "hit_at_10": round(m.hit_at_10, 4),
+            "symbol_hit_at_5": round(m.symbol_hit_at_5, 4),
+            "mrr": round(m.mrr, 4),
+            "latency_p50_ms": round(m.query_latency_p50_ms, 1),
+            "latency_p95_ms": round(m.query_latency_p95_ms, 1),
+            "latency_p99_ms": round(m.query_latency_p99_ms, 1),
+            "latency_mean_ms": round(m.query_latency_mean_ms, 1),
+            "avg_tool_calls": round(m.avg_tool_calls, 2),
+            "composite_score": round(m.composite_score, 4),
+        })
+    return summary
+
+
+def _replicate_iqr(reps: list[BenchmarkMetrics]) -> dict[str, float]:
+    return {
+        "hit_at_5": round(compute_iqr([r.hit_at_5 for r in reps]), 4),
+        "symbol_hit_at_5": round(compute_iqr([r.symbol_hit_at_5 for r in reps]), 4),
+        "mrr": round(compute_iqr([r.mrr for r in reps]), 4),
+        "latency_p50_ms": round(compute_iqr([r.query_latency_p50_ms for r in reps]), 1),
+        "latency_p95_ms": round(compute_iqr([r.query_latency_p95_ms for r in reps]), 1),
+        "latency_mean_ms": round(compute_iqr([r.query_latency_mean_ms for r in reps]), 1),
+        "composite_score": round(compute_iqr([r.composite_score for r in reps]), 4),
+    }
 
 
 def _estimate_index_size(
@@ -259,6 +420,9 @@ def _build_result_json(
     metrics: BenchmarkMetrics,
     query_results: list[QueryResult],
     repos,
+    replicate_metrics: list[BenchmarkMetrics],
+    startup_ms: float,
+    detected_tools: dict[str, str | None],
 ) -> dict:
     return {
         "run_id": run_id,
@@ -269,14 +433,19 @@ def _build_result_json(
             "git_url": server_config.get("git_url", ""),
             "git_user": server_config.get("git_user", ""),
             "version": server_config.get("version", ""),
+            "detected_tools": detected_tools,
         },
         "environment": {
             "os": platform.system().lower(),
             "arch": platform.machine(),
             "python": platform.python_version(),
             "cpu": platform.processor() or "unknown",
+            "startup_ms": round(startup_ms, 1),
         },
+        "startup_ms": round(startup_ms, 1),
         "repos": [r.name for r in repos],
+        "replicates": _replicate_summary(replicate_metrics),
+        "iqr": _replicate_iqr(replicate_metrics),
         "ingest": {
             "total_files": metrics.ingest_total_files,
             "total_sec": round(metrics.ingest_total_sec, 2),
@@ -306,11 +475,13 @@ def _build_result_json(
         "composite_score": round(metrics.composite_score, 4),
         "by_difficulty": metrics.by_difficulty,
         "by_type": metrics.by_type,
+        "by_repo": metrics.by_repo,
         "query_details": [
             {
                 "id": qr.query_id,
                 "type": qr.query_type,
                 "difficulty": qr.difficulty,
+                "repo": qr.repo,
                 "found_file": qr.found_file,
                 "found_symbol": qr.found_symbol,
                 "latency_ms": round(qr.latency_ms, 1),

@@ -42,6 +42,7 @@ class RAGAdapter:
     INGEST_PATH_KEYS = ["file_path", "path", "directory", "dir", "folder"]
     QUERY_TEXT_KEYS = ["query", "text", "question", "q", "search"]
     QUERY_LIMIT_KEYS = ["top_k", "limit", "k", "n", "num_results", "max_results"]
+    QUERY_PATH_KEYS = ["path", "directory", "project_path", "project_dir"]
 
     async def detect_tools(self) -> dict[str, str | None]:
         """Resolve which tools to call and which parameter names to use.
@@ -89,6 +90,7 @@ class RAGAdapter:
                 tools, self._query_tool,
                 query_keys=self.QUERY_TEXT_KEYS,
                 limit_keys=self.QUERY_LIMIT_KEYS,
+                path_keys=self.QUERY_PATH_KEYS,
             )
             preset_params = mapping.get("query", {}).get("params") or {}
             self._query_params = self._reconcile_params(
@@ -167,31 +169,50 @@ class RAGAdapter:
         })
         return await self.client.call_tool(self._ingest_tool, params)
 
-    async def query(self, text: str, top_k: int = 10) -> list[SearchResult]:
-        """Query the RAG index and return normalized results."""
-        if not self._query_tool:
-            raise RuntimeError("No query tool detected")
-
-        params = self._fill_params(self._query_params or {}, {
+    def _query_values(
+        self, text: str, top_k: int, path: str | None
+    ) -> dict[str, Any]:
+        values: dict[str, Any] = {
             "query": text, "text": text, "question": text,
             "q": text, "search": text,
             "limit": top_k, "top_k": top_k, "k": top_k,
             "n": top_k, "num_results": top_k, "max_results": top_k,
-        })
+        }
+        if path is not None:
+            values.update({
+                "path": path, "directory": path,
+                "project_path": path, "project_dir": path,
+            })
+        return values
+
+    async def query(
+        self, text: str, top_k: int = 10, path: str | None = None,
+    ) -> list[SearchResult]:
+        """Query the RAG index and return normalized results.
+
+        ``path`` scopes the query to a specific project directory when the
+        target tool's schema accepts it (e.g. nova-rag's ``code_search``
+        uses ``path`` to pick which project's index to search).
+        """
+        if not self._query_tool:
+            raise RuntimeError("No query tool detected")
+
+        params = self._fill_params(
+            self._query_params or {}, self._query_values(text, top_k, path),
+        )
         result = await self.client.call_tool(self._query_tool, params)
         return self._parse_search_results(result)
 
-    async def query_raw(self, text: str, top_k: int = 10) -> CallResult:
+    async def query_raw(
+        self, text: str, top_k: int = 10, path: str | None = None,
+    ) -> CallResult:
         """Query and return raw CallResult (for latency measurement)."""
         if not self._query_tool:
             raise RuntimeError("No query tool detected")
 
-        params = self._fill_params(self._query_params or {}, {
-            "query": text, "text": text, "question": text,
-            "q": text, "search": text,
-            "limit": top_k, "top_k": top_k, "k": top_k,
-            "n": top_k, "num_results": top_k, "max_results": top_k,
-        })
+        params = self._fill_params(
+            self._query_params or {}, self._query_values(text, top_k, path),
+        )
         return await self.client.call_tool(self._query_tool, params)
 
     async def clear(self) -> CallResult | None:
