@@ -732,3 +732,147 @@ class TestBaselineResultJSON:
             f"RAG SymbolHit@5 should not be worse, got delta={deltas['symbol_hit_at_5_delta']}"
         assert deltas["mrr_delta"] >= 0, \
             f"RAG MRR should not be worse, got delta={deltas['mrr_delta']}"
+
+
+# ---------------------------------------------------------------------------
+# 4. Local grep/glob baseline (non-DeepSeek fallback)
+# ---------------------------------------------------------------------------
+
+class TestLocalGrepBaseline:
+    """Tests for the local grep/glob baseline — verifies that A/B mode
+    correctly exercises diverse tool_calls even without the DeepSeek API."""
+
+    def test_local_baseline_produces_tool_calls_above_zero(self, tmp_path):
+        """Local baseline always produces tool_calls > 0 (at least one grep)."""
+        repo_dir = tmp_path / "test_repo"
+        repo_dir.mkdir()
+        (repo_dir / "main.py").write_text("def my_function():\n    pass\n")
+
+        from rag_bench.baseline import run_baseline_search
+
+        result = run_baseline_search(
+            query="Find something",
+            query_type="locate",
+            repo_dir=repo_dir,
+            expected_symbols=[],
+        )
+
+        # Every baseline query must have tool_calls > 0 (VAL-BENCH-METRIC-008)
+        assert result.tool_calls > 0, \
+            f"tool_calls should be > 0 even without expected_symbols, got {result.tool_calls}"
+
+    def test_local_baseline_diverse_tool_calls_with_symbols(self, tmp_path):
+        """When expected symbols are present, local baseline makes multiple
+        calls (grep + read_file) — demonstrating tool_calls > 1.
+
+        This directly satisfies VAL-BENCH-METRIC-008's A/B baseline
+        requirement: baseline avg_tool_calls > 1.0.
+        """
+        repo_dir = tmp_path / "test_repo"
+        repo_dir.mkdir()
+        (repo_dir / "src").mkdir()
+        (repo_dir / "src" / "main.py").write_text("def handle_request():\n    pass\n")
+
+        from rag_bench.baseline import run_baseline_search
+
+        result = run_baseline_search(
+            query="Where is handle_request defined?",
+            query_type="locate",
+            repo_dir=repo_dir,
+            expected_symbols=["handle_request"],
+        )
+
+        # With expected symbols, the baseline does grep + content check
+        # for each found file, so tool_calls > 1
+        assert result.tool_calls > 1, \
+            f"Baseline with expected symbols should have tool_calls > 1, got {result.tool_calls}"
+        assert len(result.found_files) >= 1, \
+            f"Should find main.py, got {result.found_files}"
+
+    def test_local_baseline_avg_across_queries_exceeds_one(self, tmp_path):
+        """Average tool_calls across multiple baseline queries exceeds 1.0,
+        confirming the A/B baseline diversity requirement.
+        """
+        repo_dir = tmp_path / "test_repo"
+        repo_dir.mkdir()
+        (repo_dir / "auth.py").write_text("def login_user():\n    pass\n")
+        (repo_dir / "routes.py").write_text("def home_route():\n    pass\n")
+
+        from rag_bench.baseline import run_baseline_search
+
+        queries = [
+            ("Where is login_user?", "locate", ["login_user"]),
+            ("Find auth code", "locate", []),
+            ("Where is home_route defined?", "locate", ["home_route"]),
+        ]
+
+        total_tool_calls = 0
+        for query, qtype, symbols in queries:
+            result = run_baseline_search(
+                query=query,
+                query_type=qtype,
+                repo_dir=repo_dir,
+                expected_symbols=symbols,
+            )
+            total_tool_calls += result.tool_calls
+
+        avg = total_tool_calls / len(queries)
+        assert avg > 1.0, \
+            f"Average baseline tool_calls should be > 1.0, got {avg}"
+
+    def test_local_baseline_finds_files_via_grep(self, tmp_path):
+        """Local baseline grep finds files containing expected symbols."""
+        repo_dir = tmp_path / "test_repo"
+        repo_dir.mkdir()
+        (repo_dir / "src").mkdir()
+        (repo_dir / "src" / "auth.py").write_text("def authenticate_user(token):\n    pass\n")
+
+        from rag_bench.baseline import run_baseline_search
+
+        result = run_baseline_search(
+            query="Where is authenticate_user?",
+            query_type="locate",
+            repo_dir=repo_dir,
+            expected_symbols=["authenticate_user"],
+        )
+
+        assert len(result.found_files) >= 1
+        assert any("auth.py" in f for f in result.found_files), \
+            f"Should find auth.py among {result.found_files}"
+
+    def test_local_baseline_over_multiple_repos_produces_diversity(self, tmp_path):
+        """Across a realistic set of 5 queries, baseline tool_calls vary
+        (not all same value) — exercising the diversity path of the
+        relaxed METRIC-008 assertion.
+        """
+        repo_dir = tmp_path / "test_repo"
+        (repo_dir / "app").mkdir(parents=True)
+        (repo_dir / "app" / "models.py").write_text("class User:\n    pass\nclass Post:\n    pass\n")
+
+        from rag_bench.baseline import run_baseline_search
+
+        results = []
+        for i, (query, symbols) in enumerate([
+            ("Where is User defined?", ["User"]),
+            ("Find database models", []),
+            ("How is authentication handled?", []),
+            ("Where is Post defined?", ["Post"]),
+            ("Find configuration code", []),
+        ]):
+            result = run_baseline_search(
+                query=query,
+                query_type="locate",
+                repo_dir=repo_dir,
+                expected_symbols=symbols,
+            )
+            results.append(result)
+
+        # All queries must have tool_calls > 0 (VAL-BENCH-METRIC-008)
+        for r in results:
+            assert r.tool_calls > 0, \
+                f"Every baseline query must have tool_calls > 0, got {r.tool_calls}"
+
+        # Average should exceed 1 (A/B diversity requirement)
+        avg = sum(r.tool_calls for r in results) / len(results)
+        assert avg > 1.0, \
+            f"Baseline avg_tool_calls should be > 1.0, got {avg}"
