@@ -230,9 +230,11 @@ async def run_benchmark(
     print_results_table(server_config.get("name", "custom"), final_metrics)
 
     # Build result JSON
+    server_info = getattr(client, "server_info", None) or {}
     result = _build_result_json(
         run_id=run_id,
         server_config=server_config,
+        server_info=server_info,
         metrics=final_metrics,
         query_results=final_query_results,
         repos=repos,
@@ -500,16 +502,22 @@ def _build_result_json(
     startup_ms: float,
     detected_tools: dict[str, str | None],
     baseline_result: dict | None = None,
+    server_info: dict[str, str] | None = None,
 ) -> dict:
+    # Resolve server name/version: prefer the MCP initialize handshake,
+    # fall back to the preset config.
+    si = server_info or {}
+    server_name = si.get("name") or server_config.get("name", "custom")
+    server_version = si.get("version") or server_config.get("version", "")
     result = {
         "run_id": run_id,
         "bench_version": __version__,
         "dataset_version": "v1",
         "server": {
-            "name": server_config.get("name", "custom"),
+            "name": server_name,
             "git_url": server_config.get("git_url", ""),
             "git_user": server_config.get("git_user", ""),
-            "version": server_config.get("version", ""),
+            "version": server_version,
             "detected_tools": detected_tools,
         },
         "environment": {

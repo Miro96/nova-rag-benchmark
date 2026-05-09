@@ -291,6 +291,89 @@ class TestBuildResultJson:
         assert "hit_at_5" in out["iqr"]
         assert set(out["by_repo"].keys()) == {"flask", "fastapi", "express"}
 
+    def test_server_version_from_mcp_handshake(self):
+        """server.version comes from the MCP initialize handshake."""
+        metrics, results = self._stub_metrics()
+        out = _build_result_json(
+            run_id=str(uuid.uuid4()),
+            server_config={"name": "nova-rag"},
+            server_info={"name": "nova-rag", "version": "0.8.2"},
+            metrics=metrics,
+            query_results=results,
+            repos=[],
+            replicate_metrics=[metrics],
+            startup_ms=1.0,
+            detected_tools={},
+        )
+        assert out["server"]["version"] == "0.8.2"
+        assert out["server"]["name"] == "nova-rag"
+
+    def test_server_version_non_empty(self):
+        """server.version is non-empty when MCP handshake provides it."""
+        metrics, results = self._stub_metrics()
+        out = _build_result_json(
+            run_id=str(uuid.uuid4()),
+            server_config={"name": "test-server"},
+            server_info={"name": "test-server", "version": "1.2.3"},
+            metrics=metrics,
+            query_results=results,
+            repos=[],
+            replicate_metrics=[metrics],
+            startup_ms=1.0,
+            detected_tools={},
+        )
+        assert isinstance(out["server"]["version"], str)
+        assert len(out["server"]["version"]) > 0
+
+    def test_server_version_falls_back_to_config(self):
+        """When server_info is missing, version falls back to preset config."""
+        metrics, results = self._stub_metrics()
+        out = _build_result_json(
+            run_id=str(uuid.uuid4()),
+            server_config={"name": "test-server", "version": "0.1.0"},
+            server_info=None,
+            metrics=metrics,
+            query_results=results,
+            repos=[],
+            replicate_metrics=[metrics],
+            startup_ms=1.0,
+            detected_tools={},
+        )
+        assert out["server"]["version"] == "0.1.0"
+
+    def test_server_name_from_mcp_handshake(self):
+        """server.name prefers the MCP handshake over preset config."""
+        metrics, results = self._stub_metrics()
+        out = _build_result_json(
+            run_id=str(uuid.uuid4()),
+            server_config={"name": "stale-name"},
+            server_info={"name": "fresh-name", "version": "2.0.0"},
+            metrics=metrics,
+            query_results=results,
+            repos=[],
+            replicate_metrics=[metrics],
+            startup_ms=1.0,
+            detected_tools={},
+        )
+        assert out["server"]["name"] == "fresh-name"
+
+    def test_server_version_with_empty_server_info(self):
+        """Empty server_info dict falls back to config."""
+        metrics, results = self._stub_metrics()
+        out = _build_result_json(
+            run_id=str(uuid.uuid4()),
+            server_config={"name": "srv", "version": "9.9.9"},
+            server_info={},
+            metrics=metrics,
+            query_results=results,
+            repos=[],
+            replicate_metrics=[metrics],
+            startup_ms=1.0,
+            detected_tools={},
+        )
+        assert out["server"]["version"] == "9.9.9"
+        assert out["server"]["name"] == "srv"
+
 
 class TestAdapterPathScoping:
     def test_path_value_is_used_when_schema_has_path(self):

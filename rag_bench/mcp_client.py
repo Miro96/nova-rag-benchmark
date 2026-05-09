@@ -61,6 +61,7 @@ class MCPClient:
     _tools: list[ToolInfo] = field(default_factory=list, init=False, repr=False)
     _read_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
     call_count: int = field(default=0, init=False, repr=False)
+    server_info: dict[str, str] = field(default_factory=dict, init=False, repr=False)
 
     async def start(self) -> None:
         """Start the MCP server subprocess and initialize."""
@@ -91,9 +92,11 @@ class MCPClient:
             "capabilities": {},
             "clientInfo": {"name": "rag-bench", "version": "0.1.0"},
         })
+        # Store server info from the handshake for later use in output metadata
+        self.server_info = result.get("serverInfo", {}) or {}
         # Send initialized notification
         await self._notify("notifications/initialized", {})
-        logger.info("MCP server initialized: %s", result.get("serverInfo", {}))
+        logger.info("MCP server initialized: %s", self.server_info)
 
     async def list_tools(self) -> list[ToolInfo]:
         """Discover available tools from the server."""
