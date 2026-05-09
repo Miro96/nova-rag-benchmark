@@ -1,0 +1,2070 @@
+{
+  "run_id": "84f07a95-bb82-47d1-9858-60c1b0c25582",
+  "bench_version": "0.1.0",
+  "dataset_version": "v1",
+  "server": {
+    "name": "nova-rag",
+    "git_url": "https://github.com/user/nova-rag",
+    "git_user": "",
+    "version": "1.27.1",
+    "detected_tools": {
+      "ingest": "rag_index",
+      "query": "code_search",
+      "clear": null,
+      "status": "rag_status"
+    }
+  },
+  "environment": {
+    "os": "linux",
+    "arch": "x86_64",
+    "python": "3.12.3",
+    "cpu": "x86_64",
+    "startup_ms": 1.7
+  },
+  "startup_ms": 1.7,
+  "repos": [
+    "flask",
+    "fastapi",
+    "express"
+  ],
+  "replicates": [
+    {
+      "index": 0,
+      "hit_at_1": 0.1222,
+      "hit_at_3": 0.1889,
+      "hit_at_5": 0.2444,
+      "hit_at_10": 0.2778,
+      "symbol_hit_at_5": 0.1889,
+      "mrr": 0.1668,
+      "latency_p50_ms": 4.7,
+      "latency_p95_ms": 9.3,
+      "latency_p99_ms": 10.4,
+      "latency_mean_ms": 5.1,
+      "avg_tool_calls": 1.0,
+      "composite_score": 0.4477
+    },
+    {
+      "index": 1,
+      "hit_at_1": 0.1222,
+      "hit_at_3": 0.1889,
+      "hit_at_5": 0.2444,
+      "hit_at_10": 0.2778,
+      "symbol_hit_at_5": 0.1889,
+      "mrr": 0.1668,
+      "latency_p50_ms": 5.1,
+      "latency_p95_ms": 9.6,
+      "latency_p99_ms": 11.3,
+      "latency_mean_ms": 5.7,
+      "avg_tool_calls": 1.0,
+      "composite_score": 0.4476
+    },
+    {
+      "index": 2,
+      "hit_at_1": 0.1222,
+      "hit_at_3": 0.1889,
+      "hit_at_5": 0.2444,
+      "hit_at_10": 0.2778,
+      "symbol_hit_at_5": 0.1889,
+      "mrr": 0.1668,
+      "latency_p50_ms": 4.9,
+      "latency_p95_ms": 9.5,
+      "latency_p99_ms": 11.0,
+      "latency_mean_ms": 5.2,
+      "avg_tool_calls": 1.0,
+      "composite_score": 0.4476
+    }
+  ],
+  "iqr": {
+    "hit_at_5": 0.0,
+    "symbol_hit_at_5": 0.0,
+    "mrr": 0.0,
+    "latency_p50_ms": 0.2,
+    "latency_p95_ms": 0.2,
+    "latency_mean_ms": 0.3,
+    "composite_score": 0.0
+  },
+  "ingest": {
+    "total_files": 2435,
+    "total_sec": 13.49,
+    "files_per_sec": 180.5,
+    "index_size_mb": 27.3,
+    "ram_peak_mb": 1591.6
+  },
+  "retrieval": {
+    "total_queries": 90,
+    "total_hits": 22,
+    "hit_at_1": 0.1222,
+    "hit_at_3": 0.1889,
+    "hit_at_5": 0.2444,
+    "hit_at_10": 0.2778,
+    "symbol_hit_at_5": 0.1889,
+    "mrr": 0.1668,
+    "latency": {
+      "p50_ms": 4.9,
+      "p95_ms": 9.5,
+      "p99_ms": 11.0,
+      "mean_ms": 5.2
+    }
+  },
+  "efficiency": {
+    "avg_tool_calls": 1.0
+  },
+  "composite_score": 0.4476,
+  "by_difficulty": {
+    "easy": {
+      "count": 30,
+      "hit_at_5": 0.36666666666666664,
+      "symbol_hit_at_5": 0.3,
+      "mrr": 0.2589814814814815,
+      "latency_p50_ms": 5.217270000684948
+    },
+    "medium": {
+      "count": 38,
+      "hit_at_5": 0.23684210526315788,
+      "symbol_hit_at_5": 0.15789473684210525,
+      "mrr": 0.13464912280701755,
+      "latency_p50_ms": 4.895412499990925
+    },
+    "hard": {
+      "count": 22,
+      "hit_at_5": 0.09090909090909091,
+      "symbol_hit_at_5": 0.09090909090909091,
+      "mrr": 0.09659090909090909,
+      "latency_p50_ms": 4.274299999451614
+    }
+  },
+  "by_type": {
+    "locate": {
+      "count": 49,
+      "hit_at_5": 0.30612244897959184,
+      "symbol_hit_at_5": 0.24489795918367346,
+      "mrr": 0.20107709750566896,
+      "latency_p50_ms": 5.151311000190617
+    },
+    "explain": {
+      "count": 18,
+      "hit_at_5": 0.3333333333333333,
+      "symbol_hit_at_5": 0.2222222222222222,
+      "mrr": 0.2310185185185185,
+      "latency_p50_ms": 5.107902999952785
+    },
+    "callers": {
+      "count": 12,
+      "hit_at_5": 0.0,
+      "symbol_hit_at_5": 0.0,
+      "mrr": 0.0,
+      "latency_p50_ms": 2.8956814999219205
+    },
+    "impact": {
+      "count": 11,
+      "hit_at_5": 0.09090909090909091,
+      "symbol_hit_at_5": 0.09090909090909091,
+      "mrr": 0.09090909090909091,
+      "latency_p50_ms": 3.556200999810244
+    }
+  },
+  "by_repo": {
+    "express": {
+      "count": 30,
+      "hit_at_5": 0.06666666666666667,
+      "symbol_hit_at_5": 0.06666666666666667,
+      "mrr": 0.025,
+      "latency_p50_ms": 4.504185999849142
+    },
+    "fastapi": {
+      "count": 30,
+      "hit_at_5": 0.23333333333333334,
+      "symbol_hit_at_5": 0.13333333333333333,
+      "mrr": 0.16731481481481483,
+      "latency_p50_ms": 7.787897999605775
+    },
+    "flask": {
+      "count": 30,
+      "hit_at_5": 0.43333333333333335,
+      "symbol_hit_at_5": 0.36666666666666664,
+      "mrr": 0.3080555555555556,
+      "latency_p50_ms": 4.691711500072415
+    }
+  },
+  "query_details": [
+    {
+      "id": "express_001",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 7.0,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/express/examples/session/redis.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/examples/mvc/index.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/req.is.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/res.sendFile.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/res.render.js"
+      ],
+      "returned_symbols": [
+        "createApp",
+        "createApp",
+        "createApp",
+        "createApp"
+      ]
+    },
+    {
+      "id": "express_002",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 5.4,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/express/test/Route.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/Route.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/app.route.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/req.protocol.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/req.protocol.js"
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "express_003",
+      "type": "locate",
+      "difficulty": "medium",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 5.0,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/express/test/Route.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/Route.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/app.param.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/req.route.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/req.is.js"
+      ],
+      "returned_symbols": [
+        "fn"
+      ]
+    },
+    {
+      "id": "express_004",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "express",
+      "found_file": true,
+      "found_symbol": false,
+      "latency_ms": 5.3,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/express/test/app.options.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/app.head.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/lib/express.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/lib/request.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/Route.js"
+      ],
+      "returned_symbols": [
+        "createApplication",
+        "defineGetter"
+      ]
+    },
+    {
+      "id": "express_005",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 4.8,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/express/lib/express.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/app.response.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/lib/request.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/app.head.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/app.options.js"
+      ],
+      "returned_symbols": [
+        "createApplication",
+        "defineGetter"
+      ]
+    },
+    {
+      "id": "express_006",
+      "type": "locate",
+      "difficulty": "medium",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 2.8,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "express_007",
+      "type": "explain",
+      "difficulty": "medium",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 5.1,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/express/examples/static-files/index.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/express.static.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/examples/mvc/index.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/examples/downloads/index.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/examples/mvc/lib/boot.js"
+      ],
+      "returned_symbols": [
+        "createApp",
+        "app"
+      ]
+    },
+    {
+      "id": "express_008",
+      "type": "locate",
+      "difficulty": "medium",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": true,
+      "latency_ms": 5.2,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/express/test/app.render.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/examples/ejs/index.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/app.render.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/app.engine.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/examples/mvc/index.js"
+      ],
+      "returned_symbols": [
+        "View",
+        "View",
+        "render",
+        "tryRender"
+      ]
+    },
+    {
+      "id": "express_009",
+      "type": "callers",
+      "difficulty": "hard",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 2.8,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "express_010",
+      "type": "locate",
+      "difficulty": "medium",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 5.2,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/express/test/Route.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/Route.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/app.route.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/app.route.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/examples/route-separation/site.js"
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "express_011",
+      "type": "explain",
+      "difficulty": "medium",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 5.1,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/express/test/res.status.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/middleware.basic.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/req.query.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/res.location.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/res.send.js"
+      ],
+      "returned_symbols": [
+        "createApp",
+        "testRequestedRedirect",
+        "View",
+        "createApp"
+      ]
+    },
+    {
+      "id": "express_012",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 5.2,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/express/test/Route.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/Route.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/req.route.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/app.route.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/app.options.js"
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "express_013",
+      "type": "impact",
+      "difficulty": "hard",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 2.8,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "express_014",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 5.2,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/express/test/express.json.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/res.send.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/req.is.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/express.raw.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/req.is.js"
+      ],
+      "returned_symbols": [
+        "parseError",
+        "createApp",
+        "shouldHaveBody",
+        "createApp",
+        "parseExtendedQueryString"
+      ]
+    },
+    {
+      "id": "express_015",
+      "type": "callers",
+      "difficulty": "medium",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 2.9,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "express_016",
+      "type": "explain",
+      "difficulty": "hard",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 5.1,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/express/examples/error-pages/index.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/app.options.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/examples/error-pages/index.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/app.routes.error.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/Route.js"
+      ],
+      "returned_symbols": [
+        "error"
+      ]
+    },
+    {
+      "id": "express_017",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 5.0,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/express/test/app.head.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/examples/view-constructor/github-view.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/app.head.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/examples/downloads/index.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/examples/search/index.js"
+      ],
+      "returned_symbols": [
+        "GithubView",
+        "getExpectedClientAddress"
+      ]
+    },
+    {
+      "id": "express_018",
+      "type": "locate",
+      "difficulty": "medium",
+      "repo": "express",
+      "found_file": true,
+      "found_symbol": false,
+      "latency_ms": 4.5,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/express/test/utils.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/lib/utils.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/res.redirect.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/utils.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/lib/utils.js"
+      ],
+      "returned_symbols": [
+        "parseExtendedQueryString",
+        "createETagGenerator",
+        "shouldHaveBody",
+        "accept",
+        "accept"
+      ]
+    },
+    {
+      "id": "express_019",
+      "type": "impact",
+      "difficulty": "hard",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 4.4,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/express/test/req.fresh.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/req.stale.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/examples/error-pages/index.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/res.send.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/examples/resource/index.js"
+      ],
+      "returned_symbols": [
+        "createRedirectServerForDomain",
+        "handler2"
+      ]
+    },
+    {
+      "id": "express_020",
+      "type": "explain",
+      "difficulty": "medium",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 4.5,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/express/examples/cookies/index.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/req.signedCookies.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/res.cookie.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/res.cookie.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/acceptance/cookies.js"
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "express_021",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 4.5,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/express/test/res.location.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/res.send.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/res.location.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/support/utils.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/lib/utils.js"
+      ],
+      "returned_symbols": [
+        "testRequestedRedirect",
+        "createRedirectServerForDomain",
+        "shouldHaveBody",
+        "parseExtendedQueryString",
+        "createETagGenerator"
+      ]
+    },
+    {
+      "id": "express_022",
+      "type": "callers",
+      "difficulty": "medium",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 2.5,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "express_023",
+      "type": "explain",
+      "difficulty": "medium",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 4.5,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/express/test/res.redirect.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/res.redirect.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/examples/vhost/index.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/examples/mvc/controllers/main/index.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/req.path.js"
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "express_024",
+      "type": "locate",
+      "difficulty": "hard",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 4.1,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/express/test/req.secure.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/req.ips.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/req.protocol.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/req.protocol.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/req.hostname.js"
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "express_025",
+      "type": "impact",
+      "difficulty": "hard",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 1.9,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "express_026",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 2.0,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "express_027",
+      "type": "callers",
+      "difficulty": "medium",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 1.9,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "express_028",
+      "type": "explain",
+      "difficulty": "hard",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 4.8,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/express/examples/static-files/index.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/res.locals.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/app.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/express.static.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/examples/ejs/index.js"
+      ],
+      "returned_symbols": [
+        "createApp",
+        "createApp"
+      ]
+    },
+    {
+      "id": "express_029",
+      "type": "locate",
+      "difficulty": "medium",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": true,
+      "latency_ms": 4.2,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/express/test/acceptance/content-negotiation.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/res.format.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/res.send.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/res.redirect.js",
+        "/home/upranevich/.cache/rag-bench/repos/express/test/res.send.js"
+      ],
+      "returned_symbols": [
+        "test",
+        "format"
+      ]
+    },
+    {
+      "id": "express_030",
+      "type": "impact",
+      "difficulty": "hard",
+      "repo": "express",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 2.0,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "fastapi_001",
+      "type": "locate",
+      "difficulty": "medium",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 8.3,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/param_functions.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_tutorial/test_testing_dependencies/test_tutorial001_an.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/scripts/mkdocs_hooks.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_http_connection_injection.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_tutorial/test_testing_dependencies/test_tutorial001.py"
+      ],
+      "returned_symbols": [
+        "Depends",
+        "test_tutorial001_an",
+        "resolve_file",
+        "test_http_connection_injection",
+        "test_tutorial001"
+      ]
+    },
+    {
+      "id": "fastapi_002",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 9.9,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/websockets/tutorial002_py310.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/security/http.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/exceptions.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/first_steps/tutorial001.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/security/oauth2.py"
+      ],
+      "returned_symbols": [
+        "tutorial002_py310",
+        "HTTPAuthorizationCredentials",
+        "WebSocketException",
+        "tutorial001",
+        "OAuth2PasswordRequestFormStrict"
+      ]
+    },
+    {
+      "id": "fastapi_003",
+      "type": "locate",
+      "difficulty": "medium",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 7.8,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/handling_errors/tutorial006.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/handling_errors/tutorial004.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/handling_errors/tutorial005.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/exception_handlers.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_exception_handlers.py"
+      ],
+      "returned_symbols": [
+        "validation_exception_handler",
+        "validation_exception_handler",
+        "validation_exception_handler",
+        "request_validation_exception_handler",
+        "route_with_request_validation_exception"
+      ]
+    },
+    {
+      "id": "fastapi_004",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": true,
+      "latency_ms": 7.4,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/main.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/path_operation_advanced_configuration/tutorial002.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_duplicate_models_openapi.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/openapi/utils.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/custom_request_and_route/tutorial003.py"
+      ],
+      "returned_symbols": [
+        "non_operation",
+        "use_route_names_as_operation_ids",
+        "test_get_api_route",
+        "generate_operation_id",
+        "TimedRoute"
+      ]
+    },
+    {
+      "id": "fastapi_005",
+      "type": "locate",
+      "difficulty": "medium",
+      "repo": "fastapi",
+      "found_file": true,
+      "found_symbol": true,
+      "latency_ms": 8.6,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/extending_openapi/tutorial001.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_tutorial/test_extending_openapi/test_tutorial001.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/param_functions.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/openapi/utils.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/security/open_id_connect_url.py"
+      ],
+      "returned_symbols": [
+        "custom_openapi",
+        "test_openapi_schema",
+        "Header",
+        "get_openapi_path",
+        "OpenIdConnect"
+      ]
+    },
+    {
+      "id": "fastapi_006",
+      "type": "explain",
+      "difficulty": "medium",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 7.7,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_repeated_parameter_alias.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_starlette_urlconvertors.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_tutorial/test_custom_request_and_route/test_tutorial002.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_starlette_urlconvertors.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_path.py"
+      ],
+      "returned_symbols": [
+        "get_parameters_with_repeated_aliases",
+        "path_convertor",
+        "test_endpoint_works",
+        "test_url_path_for_path_convertor",
+        "test_path_bool_foobar"
+      ]
+    },
+    {
+      "id": "fastapi_007",
+      "type": "locate",
+      "difficulty": "medium",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 3.7,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "fastapi_008",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "fastapi",
+      "found_file": true,
+      "found_symbol": false,
+      "latency_ms": 7.5,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/param_functions.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/security/open_id_connect_url.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/security/oauth2.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_tutorial/test_sql_databases/test_sql_databases_middleware.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/security/base.py"
+      ],
+      "returned_symbols": [
+        "Security",
+        "OpenIdConnect",
+        "SecurityScopes",
+        "client",
+        "base"
+      ]
+    },
+    {
+      "id": "fastapi_009",
+      "type": "callers",
+      "difficulty": "hard",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 3.4,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "fastapi_010",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 6.5,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/middleware/__init__.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_ws_router.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_custom_middleware_exception.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_dependency_contextvars.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_dependency_contextmanager.py"
+      ],
+      "returned_symbols": [
+        "__init__",
+        "websocket_middleware",
+        "run_middleware",
+        "custom_middleware",
+        "middleware"
+      ]
+    },
+    {
+      "id": "fastapi_011",
+      "type": "explain",
+      "difficulty": "medium",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 9.7,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/handling_errors/tutorial006.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/exceptions.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/handling_errors/tutorial004.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_tutorial/test_handling_errors/test_tutorial001.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_tutorial/test_handling_errors/test_tutorial004.py"
+      ],
+      "returned_symbols": [
+        "tutorial006",
+        "HTTPException",
+        "tutorial004",
+        "test_tutorial001",
+        "test_tutorial004"
+      ]
+    },
+    {
+      "id": "fastapi_012",
+      "type": "locate",
+      "difficulty": "medium",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 8.5,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/middleware/tutorial001.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_duplicate_models_openapi.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_response_model_as_return_annotation.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/extra_data_types/tutorial001_py310.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/responses.py"
+      ],
+      "returned_symbols": [
+        "add_process_time_header",
+        "f",
+        "no_response_model_annotation_response_class",
+        "read_items",
+        "responses"
+      ]
+    },
+    {
+      "id": "fastapi_013",
+      "type": "impact",
+      "difficulty": "hard",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 8.9,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/param_functions.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_dependency_contextvars.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/openapi/docs.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/params.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/security/oauth2.py"
+      ],
+      "returned_symbols": [
+        "Depends",
+        "test_dependency_contextvars",
+        "get_swagger_ui_oauth2_redirect_html",
+        "Security",
+        "OAuth2PasswordBearer"
+      ]
+    },
+    {
+      "id": "fastapi_014",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 3.7,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "fastapi_015",
+      "type": "callers",
+      "difficulty": "medium",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 4.2,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "fastapi_016",
+      "type": "explain",
+      "difficulty": "hard",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 11.0,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/generate_clients/tutorial001_py39.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/generate_clients/tutorial002_py39.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/_compat.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/additional_responses/tutorial003.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/_compat.py"
+      ],
+      "returned_symbols": [
+        "tutorial001_py39",
+        "tutorial002_py39",
+        "get_schema_from_model_field",
+        "tutorial003",
+        "get_schema_from_model_field"
+      ]
+    },
+    {
+      "id": "fastapi_017",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 9.1,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/_compat.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_tutorial/test_testing/test_tutorial001.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/security/oauth2.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_tutorial/test_testing/test_main.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_tutorial/test_conditional_openapi/test_tutorial001.py"
+      ],
+      "returned_symbols": [
+        "is_pv1_scalar_sequence_field",
+        "test_tutorial001",
+        "SecurityScopes",
+        "test_main",
+        "get_client"
+      ]
+    },
+    {
+      "id": "fastapi_018",
+      "type": "locate",
+      "difficulty": "hard",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 8.1,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_repeated_parameter_alias.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_openapi_query_parameter_extension.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/openapi/utils.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/security/api_key.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/param_functions.py"
+      ],
+      "returned_symbols": [
+        "get_parameters_with_repeated_aliases",
+        "route_with_extra_query_parameters",
+        "_get_openapi_operation_parameters",
+        "APIKeyQuery",
+        "Query"
+      ]
+    },
+    {
+      "id": "fastapi_019",
+      "type": "impact",
+      "difficulty": "hard",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 4.0,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "fastapi_020",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "fastapi",
+      "found_file": true,
+      "found_symbol": false,
+      "latency_ms": 7.8,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/middleware/cors.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/cors/tutorial001.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_tutorial/test_cors/test_tutorial001.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_tutorial/test_cors/test_tutorial001.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/middleware/__init__.py"
+      ],
+      "returned_symbols": [
+        "cors",
+        "tutorial001",
+        "test_tutorial001",
+        "test_cors",
+        "__init__"
+      ]
+    },
+    {
+      "id": "fastapi_021",
+      "type": "explain",
+      "difficulty": "medium",
+      "repo": "fastapi",
+      "found_file": true,
+      "found_symbol": false,
+      "latency_ms": 7.2,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/routing.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/concurrency.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/events/tutorial003.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_router_events.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_router_events.py"
+      ],
+      "returned_symbols": [
+        "_merge_lifespan_context",
+        "contextmanager_in_threadpool",
+        "lifespan",
+        "test_app_lifespan_state",
+        "test_merged_no_return_lifespans_return_none"
+      ]
+    },
+    {
+      "id": "fastapi_022",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": true,
+      "latency_ms": 7.4,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/request_files/tutorial001_02_py310.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/request_files/tutorial001_02_an_py310.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/request_files/tutorial001_02.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/request_files/tutorial001_02_an_py39.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/request_files/tutorial001_02_an.py"
+      ],
+      "returned_symbols": [
+        "create_upload_file",
+        "create_upload_file",
+        "create_upload_file",
+        "create_upload_file",
+        "create_upload_file"
+      ]
+    },
+    {
+      "id": "fastapi_023",
+      "type": "callers",
+      "difficulty": "medium",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 3.5,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "fastapi_024",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 7.9,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/exception_handlers.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_http_connection_injection.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/handling_errors/tutorial004.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_exception_handlers.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_exception_handlers.py"
+      ],
+      "returned_symbols": [
+        "http_exception_handler",
+        "test_value_extracting_by_http",
+        "http_exception_handler",
+        "route_with_http_exception",
+        "test_override_http_exception"
+      ]
+    },
+    {
+      "id": "fastapi_025",
+      "type": "explain",
+      "difficulty": "medium",
+      "repo": "fastapi",
+      "found_file": true,
+      "found_symbol": false,
+      "latency_ms": 7.0,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_tutorial/test_request_forms_and_files/test_tutorial001.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_tutorial/test_request_forms_and_files/test_tutorial001_an.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_tutorial/test_request_forms_and_files/test_tutorial001_an_py39.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_tutorial/test_custom_request_and_route/test_tutorial002.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/routing.py"
+      ],
+      "returned_symbols": [
+        "get_app",
+        "get_app",
+        "get_app",
+        "test_endpoint_works",
+        "APIRouter"
+      ]
+    },
+    {
+      "id": "fastapi_026",
+      "type": "impact",
+      "difficulty": "hard",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 3.6,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "fastapi_027",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "fastapi",
+      "found_file": true,
+      "found_symbol": false,
+      "latency_ms": 11.0,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/encoders.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_jsonable_encoder.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/encoders.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/exception_handlers.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_jsonable_encoder.py"
+      ],
+      "returned_symbols": [
+        "decimal_encoder",
+        "test_custom_enum_encoders",
+        "generate_encoders_by_class_tuples",
+        "exception_handlers",
+        "test_encode_unsupported"
+      ]
+    },
+    {
+      "id": "fastapi_028",
+      "type": "callers",
+      "difficulty": "medium",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 7.8,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_jsonable_encoder.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_jsonable_encoder.py"
+      ],
+      "returned_symbols": [
+        "test_encode_class",
+        "test_encode_dict"
+      ]
+    },
+    {
+      "id": "fastapi_029",
+      "type": "explain",
+      "difficulty": "hard",
+      "repo": "fastapi",
+      "found_file": true,
+      "found_symbol": false,
+      "latency_ms": 10.7,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/routing.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_tutorial/test_custom_request_and_route/test_tutorial002.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_dependency_contextmanager.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/events/tutorial003.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/response_headers/tutorial002.py"
+      ],
+      "returned_symbols": [
+        "get_websocket_app",
+        "test_endpoint_works",
+        "test_sync_async_state",
+        "tutorial003",
+        "tutorial002"
+      ]
+    },
+    {
+      "id": "fastapi_030",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "fastapi",
+      "found_file": false,
+      "found_symbol": true,
+      "latency_ms": 9.2,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_repeated_parameter_alias.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/tests/test_openapi_query_parameter_extension.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/openapi/utils.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/docs_src/custom_response/tutorial008.py",
+        "/home/upranevich/.cache/rag-bench/repos/fastapi/fastapi/openapi/models.py"
+      ],
+      "returned_symbols": [
+        "get_parameters_with_repeated_aliases",
+        "route_with_extra_query_parameters",
+        "_get_openapi_operation_parameters",
+        "main",
+        "ParameterInType"
+      ]
+    },
+    {
+      "id": "flask_001",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "flask",
+      "found_file": true,
+      "found_symbol": true,
+      "latency_ms": 6.0,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/sansio/app.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/app.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/testing.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/cli.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/sansio/blueprints.py"
+      ],
+      "returned_symbols": [
+        "App",
+        "Flask",
+        "EnvironBuilder",
+        "ScriptInfo",
+        "Blueprint"
+      ]
+    },
+    {
+      "id": "flask_002",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "flask",
+      "found_file": true,
+      "found_symbol": true,
+      "latency_ms": 4.7,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/ctx.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/helpers.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/views.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/wrappers.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/json/__init__.py"
+      ],
+      "returned_symbols": [
+        "after_this_request",
+        "make_response",
+        "MethodView",
+        "Response",
+        "jsonify"
+      ]
+    },
+    {
+      "id": "flask_003",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "flask",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 4.5,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_basic.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/debughelpers.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_basic.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_apps/helloworld/hello.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/examples/tutorial/flaskr/blog.py"
+      ],
+      "returned_symbols": [
+        "test_url_processors",
+        "FormDataRoutingRedirect",
+        "test_build_error_handler",
+        "hello",
+        "delete"
+      ]
+    },
+    {
+      "id": "flask_004",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "flask",
+      "found_file": true,
+      "found_symbol": true,
+      "latency_ms": 4.4,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/templating.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/templating.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_templating.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_templating.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_signals.py"
+      ],
+      "returned_symbols": [
+        "render_template",
+        "render_template_string",
+        "test_add_template_test_with_name_and_template",
+        "test_template_test_with_name_and_template",
+        "test_template_rendered"
+      ]
+    },
+    {
+      "id": "flask_005",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "flask",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 1.9,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "flask_006",
+      "type": "locate",
+      "difficulty": "medium",
+      "repo": "flask",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 1.9,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "flask_007",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "flask",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 4.9,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/examples/tutorial/tests/test_auth.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/examples/tutorial/tests/test_blog.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_testing.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/examples/tutorial/tests/test_factory.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/views.py"
+      ],
+      "returned_symbols": [
+        "test_register",
+        "test_delete",
+        "test_reuse_client",
+        "test_hello",
+        "MethodView"
+      ]
+    },
+    {
+      "id": "flask_008",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "flask",
+      "found_file": true,
+      "found_symbol": true,
+      "latency_ms": 4.9,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/sansio/app.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/testing.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/app.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/cli.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/config.py"
+      ],
+      "returned_symbols": [
+        "App",
+        "EnvironBuilder",
+        "Flask",
+        "shell_command",
+        "Config"
+      ]
+    },
+    {
+      "id": "flask_009",
+      "type": "callers",
+      "difficulty": "medium",
+      "repo": "flask",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 4.4,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/ctx.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_async.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/templating.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/examples/tutorial/tests/test_db.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/examples/tutorial/flaskr/db.py"
+      ],
+      "returned_symbols": [
+        "AppContext",
+        "test_async_before_after_request",
+        "_render",
+        "test_init_db_command",
+        "init_app"
+      ]
+    },
+    {
+      "id": "flask_010",
+      "type": "explain",
+      "difficulty": "medium",
+      "repo": "flask",
+      "found_file": true,
+      "found_symbol": true,
+      "latency_ms": 4.9,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/testing.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/ctx.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/sansio/app.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/app.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/ctx.py"
+      ],
+      "returned_symbols": [
+        "FlaskClient",
+        "has_app_context",
+        "App",
+        "Flask",
+        "AppContext"
+      ]
+    },
+    {
+      "id": "flask_011",
+      "type": "locate",
+      "difficulty": "medium",
+      "repo": "flask",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 5.2,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_basic.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_basic.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/type_check/typing_error_handler.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_user_error_handler.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/type_check/typing_error_handler.py"
+      ],
+      "returned_symbols": [
+        "test_error_handling_processing",
+        "test_user_error_handling",
+        "handle_multiple",
+        "TestGenericHandlers",
+        "handle_custom"
+      ]
+    },
+    {
+      "id": "flask_012",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "flask",
+      "found_file": true,
+      "found_symbol": true,
+      "latency_ms": 5.0,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/cli.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_cli.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/testing.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/blueprints.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/app.py"
+      ],
+      "returned_symbols": [
+        "FlaskGroup",
+        "test_cli",
+        "FlaskCliRunner",
+        "Blueprint",
+        "Flask"
+      ]
+    },
+    {
+      "id": "flask_013",
+      "type": "explain",
+      "difficulty": "medium",
+      "repo": "flask",
+      "found_file": true,
+      "found_symbol": true,
+      "latency_ms": 4.9,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_helpers.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_basic.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/app.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_basic.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/sansio/scaffold.py"
+      ],
+      "returned_symbols": [
+        "TestSendfile",
+        "test_static_files",
+        "Flask",
+        "test_static_folder_with_pathlib_path",
+        "Scaffold"
+      ]
+    },
+    {
+      "id": "flask_014",
+      "type": "impact",
+      "difficulty": "hard",
+      "repo": "flask",
+      "found_file": true,
+      "found_symbol": true,
+      "latency_ms": 5.1,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/helpers.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/views.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/cli.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/logging.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_basic.py"
+      ],
+      "returned_symbols": [
+        "url_for",
+        "View",
+        "routes_command",
+        "has_level_handler",
+        "test_url_generation"
+      ]
+    },
+    {
+      "id": "flask_015",
+      "type": "locate",
+      "difficulty": "medium",
+      "repo": "flask",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 4.3,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/helpers.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/helpers.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/conftest.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/sansio/scaffold.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/ctx.py"
+      ],
+      "returned_symbols": [
+        "get_flashed_messages",
+        "helpers",
+        "limit_loader",
+        "find_package",
+        "ctx"
+      ]
+    },
+    {
+      "id": "flask_016",
+      "type": "callers",
+      "difficulty": "hard",
+      "repo": "flask",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 2.1,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "flask_017",
+      "type": "explain",
+      "difficulty": "medium",
+      "repo": "flask",
+      "found_file": true,
+      "found_symbol": true,
+      "latency_ms": 4.9,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/json/__init__.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_testing.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/wrappers.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_basic.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_basic.py"
+      ],
+      "returned_symbols": [
+        "jsonify",
+        "test_json_request_and_response",
+        "Response",
+        "test_make_response_with_response_instance",
+        "test_jsonify_mimetype"
+      ]
+    },
+    {
+      "id": "flask_018",
+      "type": "locate",
+      "difficulty": "medium",
+      "repo": "flask",
+      "found_file": true,
+      "found_symbol": false,
+      "latency_ms": 5.2,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/cli.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_templating.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_templating.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/helpers.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_basic.py"
+      ],
+      "returned_symbols": [
+        "show_server_banner",
+        "test_templates_auto_reload",
+        "test_templates_auto_reload_debug_run",
+        "get_debug_flag",
+        "test_werkzeug_passthrough_errors"
+      ]
+    },
+    {
+      "id": "flask_019",
+      "type": "impact",
+      "difficulty": "hard",
+      "repo": "flask",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 4.6,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/ctx.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/views.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/debughelpers.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/views.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/ctx.py"
+      ],
+      "returned_symbols": [
+        "after_this_request",
+        "View",
+        "FormDataRoutingRedirect",
+        "MethodView",
+        "copy_current_request_context"
+      ]
+    },
+    {
+      "id": "flask_020",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "flask",
+      "found_file": true,
+      "found_symbol": true,
+      "latency_ms": 4.4,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/logging.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/logging.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_logging.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_logging.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_subclassing.py"
+      ],
+      "returned_symbols": [
+        "create_logger",
+        "wsgi_errors_stream",
+        "test_logging",
+        "reset_logging",
+        "test_suppressed_exception_logging"
+      ]
+    },
+    {
+      "id": "flask_021",
+      "type": "explain",
+      "difficulty": "hard",
+      "repo": "flask",
+      "found_file": false,
+      "found_symbol": true,
+      "latency_ms": 5.6,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/sansio/scaffold.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/templating.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/sansio/blueprints.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/sansio/app.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/app.py"
+      ],
+      "returned_symbols": [
+        "Scaffold",
+        "Environment",
+        "Blueprint",
+        "App",
+        "Flask"
+      ]
+    },
+    {
+      "id": "flask_022",
+      "type": "callers",
+      "difficulty": "medium",
+      "repo": "flask",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 2.0,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "flask_023",
+      "type": "locate",
+      "difficulty": "medium",
+      "repo": "flask",
+      "found_file": true,
+      "found_symbol": false,
+      "latency_ms": 4.9,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/logging.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_logging.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/app.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_basic.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/ctx.py"
+      ],
+      "returned_symbols": [
+        "wsgi_errors_stream",
+        "test_wsgi_errors_stream",
+        "Flask",
+        "test_session_using_application_root",
+        "RequestContext"
+      ]
+    },
+    {
+      "id": "flask_024",
+      "type": "explain",
+      "difficulty": "medium",
+      "repo": "flask",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 4.9,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/helpers.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/app.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/test_helpers.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/cli.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/helpers.py"
+      ],
+      "returned_symbols": [
+        "send_from_directory",
+        "Flask",
+        "TestNoImports",
+        "FlaskGroup",
+        "send_file"
+      ]
+    },
+    {
+      "id": "flask_025",
+      "type": "impact",
+      "difficulty": "hard",
+      "repo": "flask",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 2.0,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "flask_026",
+      "type": "locate",
+      "difficulty": "easy",
+      "repo": "flask",
+      "found_file": true,
+      "found_symbol": false,
+      "latency_ms": 4.3,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/typing.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/views.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/config.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/tests/type_check/typing_app_decorators.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/ctx.py"
+      ],
+      "returned_symbols": [
+        "typing",
+        "views",
+        "config",
+        "typing_app_decorators",
+        "ctx"
+      ]
+    },
+    {
+      "id": "flask_027",
+      "type": "callers",
+      "difficulty": "medium",
+      "repo": "flask",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 2.0,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "flask_028",
+      "type": "explain",
+      "difficulty": "hard",
+      "repo": "flask",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 4.8,
+      "tool_calls": 1,
+      "returned_files": [
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/sansio/app.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/cli.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/json/__init__.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/templating.py",
+        "/home/upranevich/.cache/rag-bench/repos/flask/src/flask/json/__init__.py"
+      ],
+      "returned_symbols": [
+        "App",
+        "FlaskGroup",
+        "load",
+        "Environment",
+        "loads"
+      ]
+    },
+    {
+      "id": "flask_029",
+      "type": "locate",
+      "difficulty": "medium",
+      "repo": "flask",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 2.0,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    },
+    {
+      "id": "flask_030",
+      "type": "impact",
+      "difficulty": "hard",
+      "repo": "flask",
+      "found_file": false,
+      "found_symbol": false,
+      "latency_ms": 1.9,
+      "tool_calls": 1,
+      "returned_files": [
+        ""
+      ],
+      "returned_symbols": []
+    }
+  ],
+  "baseline": {
+    "retrieval": {
+      "total_queries": 90,
+      "total_hits": 15,
+      "hit_at_1": 0.1444,
+      "hit_at_3": 0.1556,
+      "hit_at_5": 0.1667,
+      "hit_at_10": 0.1667,
+      "symbol_hit_at_5": 0.1222,
+      "mrr": 0.1522,
+      "latency": {
+        "p50_ms": 14172.4,
+        "p95_ms": 18199.0,
+        "p99_ms": 20588.3,
+        "mean_ms": 13620.4
+      }
+    },
+    "efficiency": {
+      "avg_tool_calls": 7.89
+    },
+    "composite_score": 0.2159,
+    "method": "deepseek"
+  },
+  "ab_comparison": {
+    "hit_at_5_delta": 0.0777,
+    "symbol_hit_at_5_delta": 0.0667,
+    "mrr_delta": 0.0146,
+    "latency_p50_delta": 14167.5,
+    "latency_p95_delta": 18189.5,
+    "latency_mean_delta": 13615.2,
+    "tool_calls_delta": 6.89,
+    "composite_score_delta": 0.2317
+  }
+}
