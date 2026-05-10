@@ -50,7 +50,7 @@ rag-bench run --command "python -m your_server" --transport stdio
 # Or use a preset
 rag-bench run --preset mcp-local-rag
 
-# Run tests
+# Run tests (193 tests)
 pytest tests/ -v
 ```
 
