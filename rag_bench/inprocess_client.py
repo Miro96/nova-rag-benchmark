@@ -31,6 +31,10 @@ class InProcessClient(BaseClient):
     _instance: Any = field(default=None, init=False, repr=False)
     _call_count: int = field(default=0, init=False, repr=False)
 
+    # Override server_info from BaseClient so the dataclass machinery resolves
+    # it to a plain dict rather than leaving it as a Field descriptor.
+    server_info: dict[str, str] = field(default_factory=dict)
+
     async def _get_instance(self) -> Any:
         if self._instance is None:
             try:
@@ -78,22 +82,8 @@ class InProcessClient(BaseClient):
         latency_ms = (time.perf_counter() - t0) * 1000
 
         # Normalise result to CallResult
-        if isinstance(result, list):
+        if isinstance(result, (list, dict)):
             import json
-            content = [
-                {"type": "text", "text": json.dumps(item)}
-                for item in result
-            ]
-            return CallResult(content=content, latency_ms=latency_ms)
-
-        if isinstance(result, dict):
-            import json
-            if "content" in result:
-                return CallResult(
-                    content=result["content"],
-                    latency_ms=latency_ms,
-                    is_error=result.get("isError", False),
-                )
             return CallResult(
                 content=[{"type": "text", "text": json.dumps(result)}],
                 latency_ms=latency_ms,
