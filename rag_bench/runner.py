@@ -13,6 +13,7 @@ from pathlib import Path
 
 from rag_bench import __version__
 from rag_bench.adapter import RAGAdapter
+from rag_bench.base_client import BaseClient
 from rag_bench.datasets.loader import (
     Query,
     clone_repo,
@@ -21,7 +22,9 @@ from rag_bench.datasets.loader import (
     load_repos,
     load_warmup_queries,
 )
-from rag_bench.mcp_client import create_client
+from rag_bench.mcp_client import create_client as create_mcp_client
+from rag_bench.cli_client import CLIClient
+from rag_bench.inprocess_client import InProcessClient
 from rag_bench.metrics import (
     BenchmarkMetrics,
     MemorySampler,
@@ -40,6 +43,48 @@ logger = logging.getLogger(__name__)
 def _nova_rag_data_dir() -> Path:
     """Resolve the on-disk index directory used by nova-rag-style servers."""
     return Path(os.getenv("NOVA_RAG_DATA_DIR", str(Path.home() / ".nova-rag")))
+
+
+_SUPPORTED_TRANSPORTS = ("mcp", "cli", "inprocess")
+_LEGACY_TRANSPORT_ALIASES = {"stdio": "mcp", "sse": "mcp"}
+
+
+def _create_client(server_config: dict) -> BaseClient:
+    """Create the appropriate client based on the preset's ``transport`` field.
+
+    Defaults to ``"mcp"`` for backward compatibility with presets that
+    don't specify a transport.
+    """
+    transport = (server_config.get("transport") or "mcp").lower()
+    # Map legacy names
+    transport = _LEGACY_TRANSPORT_ALIASES.get(transport, transport)
+
+    if transport == "mcp":
+        return create_mcp_client(server_config)
+
+    if transport == "cli":
+        command = server_config.get("command", "")
+        if not command:
+            raise RuntimeError(
+                "CLI transport requires a 'command' field in the preset"
+            )
+        args = server_config.get("args", [])
+        env = server_config.get("env")
+        return CLIClient(command=command, args=args, env=env)
+
+    if transport == "inprocess":
+        module_path = server_config.get("module", "")
+        class_name = server_config.get("class", "")
+        if not module_path or not class_name:
+            raise RuntimeError(
+                "InProcess transport requires 'module' and 'class' fields in the preset"
+            )
+        return InProcessClient(module_path=module_path, class_name=class_name)
+
+    raise RuntimeError(
+        f"Unknown transport type '{transport}'. "
+        f"Supported transports: {', '.join(_SUPPORTED_TRANSPORTS)}"
+    )
 
 
 def clean_nova_rag_index(data_dir: Path | None = None) -> Path:
@@ -98,8 +143,10 @@ async def run_benchmark(
         cleaned = clean_nova_rag_index()
         logger.info("Cleaned index dir at %s", cleaned)
 
-    # Start MCP server
-    client = create_client(server_config)
+    # Create the appropriate client based on transport type
+    client = _create_client(server_config)
+
+    # Start MCP server (if MCP transport)
     sampler: MemorySampler | None = None
     ram_peak = 0.0
     ingest_sec = 0.0
@@ -112,7 +159,84 @@ async def run_benchmark(
     replicate_metrics: list[BenchmarkMetrics] = []
 
     try:
-        async with client:
+        if hasattr(client, '__aenter__'):
+            # MCPClient uses async context manager (start/stop lifecycle)
+            async with client:
+                startup_t0 = time.perf_counter()
+                adapter = RAGAdapter(client, server_config)
+                detected = await adapter.detect_tools()
+                detected_tools = dict(detected)
+                startup_ms = (time.perf_counter() - startup_t0) * 1000.0
+                logger.info("Detected tools: %s", detected)
+                logger.info("Startup (init + tools/list): %.1f ms", startup_ms)
+
+                # === INGEST PHASE ===
+                logger.info("=== INGEST PHASE ===")
+                process = client._process
+                sampler = MemorySampler(process.pid if process else None)
+                sampler.start()
+
+                ingest_start = time.perf_counter()
+
+                for repo in repos:
+                    repo_dir = repo_dirs[repo.name]
+                    files = get_repo_files(repo_dir)
+                    logger.info("Ingesting %s (%d files)...", repo.name, len(files))
+
+                    try:
+                        await adapter.ingest_directory(str(repo_dir))
+                        total_files += len(files)
+                        logger.info("Ingested %s via directory ingest", repo.name)
+                    except (RuntimeError, Exception) as e:
+                        logger.info("Directory ingest failed (%s), trying file-by-file...", e)
+                        for f in files:
+                            try:
+                                await adapter.ingest_file(str(f))
+                                total_files += 1
+                            except Exception as fe:
+                                logger.debug("Failed to ingest %s: %s", f, fe)
+
+                ingest_sec = time.perf_counter() - ingest_start
+
+                index_size_mb = _estimate_index_size(server_config, repo_dirs)
+
+                logger.info(
+                    "Ingest done: %d files in %.1fs (%.1f files/s)",
+                    total_files, ingest_sec,
+                    total_files / ingest_sec if ingest_sec > 0 else 0,
+                )
+
+                # === WARMUP ===
+                logger.info("=== WARMUP (%d queries) ===", len(warmup_queries))
+                for w in warmup_queries:
+                    for repo in repos:
+                        repo_dir = repo_dirs[repo.name]
+                        try:
+                            await adapter.query(w.query, top_k=top_k, path=str(repo_dir))
+                        except Exception as e:
+                            logger.debug("Warmup query failed: %s", e)
+
+                # === BENCHMARK PHASE (N replicates) ===
+                for rep in range(replicates):
+                    logger.info(
+                        "=== REPLICATE %d/%d (%d queries) ===",
+                        rep + 1, replicates, len(queries),
+                    )
+                    results = await _run_query_pass(
+                        adapter, client, queries, repo_dirs, top_k=top_k, replicate=rep,
+                    )
+                    replicate_results.append(results)
+                    replicate_metrics.append(
+                        compute_metrics(
+                            results,
+                            ingest_total_sec=ingest_sec,
+                            ingest_total_files=total_files,
+                            index_size_mb=index_size_mb,
+                            ram_peak_mb=0.0,
+                        )
+                    )
+        else:
+            # CLI / InProcess — no async context manager needed
             startup_t0 = time.perf_counter()
             adapter = RAGAdapter(client, server_config)
             detected = await adapter.detect_tools()
@@ -123,8 +247,7 @@ async def run_benchmark(
 
             # === INGEST PHASE ===
             logger.info("=== INGEST PHASE ===")
-            process = client._process
-            sampler = MemorySampler(process.pid if process else None)
+            sampler = MemorySampler(None)
             sampler.start()
 
             ingest_start = time.perf_counter()
@@ -158,8 +281,6 @@ async def run_benchmark(
             )
 
             # === WARMUP ===
-            # Use dedicated warmup queries (disjoint from benchmark) to warm
-            # caches/JITs without polluting Hit@K or latency on real items.
             logger.info("=== WARMUP (%d queries) ===", len(warmup_queries))
             for w in warmup_queries:
                 for repo in repos:

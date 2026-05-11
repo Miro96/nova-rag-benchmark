@@ -5,52 +5,22 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import sys
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from rag_bench.base_client import (
+    BaseClient,
+    CallResult,
+    ToolInfo,
+    _resolve_command_parts,
+)
+
 logger = logging.getLogger(__name__)
 
 
-def _resolve_command_parts(command: str, args: list[str]) -> list[str]:
-    """Split a command string and substitute the current interpreter for `python`.
-
-    Presets routinely declare `python -m foo` so the user doesn't have to know
-    the absolute interpreter path, but `subprocess` resolves bare `python` via
-    PATH which can pick up the system interpreter rather than the venv that
-    has the target package installed.
-    """
-    parts = command.split() + list(args or [])
-    if parts and parts[0] in ("python", "python3"):
-        parts[0] = sys.executable
-    return parts
-
-
 @dataclass
-class ToolInfo:
-    name: str
-    description: str
-    input_schema: dict[str, Any]
-
-
-@dataclass
-class CallResult:
-    content: list[dict[str, Any]]
-    latency_ms: float
-    is_error: bool = False
-
-    @property
-    def text(self) -> str:
-        parts = []
-        for item in self.content:
-            if item.get("type") == "text":
-                parts.append(item["text"])
-        return "\n".join(parts)
-
-
-@dataclass
-class MCPClient:
+class MCPClient(BaseClient):
     """JSON-RPC client for MCP servers over stdio."""
 
     command: str
@@ -60,8 +30,7 @@ class MCPClient:
     _request_id: int = field(default=0, init=False, repr=False)
     _tools: list[ToolInfo] = field(default_factory=list, init=False, repr=False)
     _read_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
-    call_count: int = field(default=0, init=False, repr=False)
-    server_info: dict[str, str] = field(default_factory=dict, init=False, repr=False)
+    _call_count: int = field(default=0, init=False, repr=False)
 
     async def start(self) -> None:
         """Start the MCP server subprocess and initialize."""
@@ -114,11 +83,11 @@ class MCPClient:
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> CallResult:
         """Call an MCP tool and measure latency.
 
-        ``call_count`` tracks attempted invocations (including failures) so the
+        ``_call_count`` tracks attempted invocations (including failures) so the
         runner can compute per-query MCP tool-call counts via before/after
         deltas, instead of hardcoding 1.0.
         """
-        self.call_count += 1
+        self._call_count += 1
         t0 = time.perf_counter()
         result = await self._request("tools/call", {
             "name": name,
@@ -226,6 +195,10 @@ class MCPClient:
 
     async def __aexit__(self, *exc):
         await self.stop()
+
+    @property
+    def call_count(self) -> int:
+        return self._call_count
 
 
 def create_client(server_config: dict) -> MCPClient:

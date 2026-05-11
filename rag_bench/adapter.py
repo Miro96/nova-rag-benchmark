@@ -1,4 +1,4 @@
-"""Adapters for normalizing different RAG MCP server interfaces."""
+"""Adapters for normalizing different RAG server interfaces."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from rag_bench.mcp_client import CallResult, MCPClient, ToolInfo
+from rag_bench.base_client import BaseClient, CallResult, ToolInfo
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +22,9 @@ class SearchResult:
 
 
 class RAGAdapter:
-    """Normalizes different RAG MCP servers into a common interface."""
+    """Normalizes different RAG servers into a common interface."""
 
-    def __init__(self, client: MCPClient, config: dict[str, Any] | None = None):
+    def __init__(self, client: BaseClient, config: dict[str, Any] | None = None):
         self.client = client
         self.config = config or {}
         self._ingest_tool: str | None = None

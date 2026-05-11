@@ -267,7 +267,7 @@ class TestDeepSeekUnavailable:
                  patch("rag_bench.runner.load_queries") as mock_load_queries, \
                  patch("rag_bench.runner.load_warmup_queries") as mock_load_warmup, \
                  patch("rag_bench.runner.clone_repo") as mock_clone, \
-                 patch("rag_bench.runner.create_client") as mock_create_client, \
+                 patch("rag_bench.runner._create_client") as mock_create_client, \
                  patch("rag_bench.runner.clean_nova_rag_index") as mock_clean:
 
                 from rag_bench.datasets.loader import RepoInfo, Query, WarmupQuery

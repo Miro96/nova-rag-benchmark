@@ -20,7 +20,7 @@ def cli():
 @click.option("--preset", help="Preset name (e.g. nova-rag, mcp-local-rag)")
 @click.option("--config", type=click.Path(exists=True), help="Custom server config JSON")
 @click.option("--command", help="Server launch command (auto-detect mode)")
-@click.option("--transport", default="stdio", type=click.Choice(["stdio", "sse"]))
+@click.option("--transport", default="mcp", type=click.Choice(["mcp", "stdio", "sse", "cli", "inprocess"]))
 @click.option("--repo", help="Run only on specific repo (flask, fastapi, express)")
 @click.option("--ab-baseline", is_flag=True, help="Run A/B comparison vs Grep/Glob baseline")
 @click.option("--top-k", default=10, help="Number of results to request from RAG")
@@ -38,8 +38,14 @@ def cli():
 @click.option("--output", "-o", type=click.Path(), help="Output JSON path")
 def run(preset, config, command, transport, repo, ab_baseline, top_k,
         replicates, clean_index, output):
-    """Run benchmark on a RAG MCP server."""
+    """Run benchmark on a RAG server."""
     from rag_bench.runner import run_benchmark
+
+    # Map legacy transport names
+    if transport == "stdio":
+        transport = "mcp"
+    elif transport == "sse":
+        transport = "mcp"
 
     server_config = _resolve_server_config(preset, config, command, transport)
 
@@ -136,14 +142,20 @@ def serve(port, host):
 @click.option("--preset", help="Preset name to validate (e.g. nova-rag).")
 @click.option("--config", type=click.Path(exists=True), help="Custom server config JSON.")
 @click.option("--command", help="Server launch command (auto-detect mode).")
-@click.option("--transport", default="stdio", type=click.Choice(["stdio", "sse"]))
+@click.option("--transport", default="mcp", type=click.Choice(["mcp", "stdio", "sse", "cli", "inprocess"]))
 @click.option(
     "--config-only",
     is_flag=True,
-    help="Only validate preset structure; don't launch the MCP server.",
+    help="Only validate preset structure; don't launch the server.",
 )
 def validate(preset, config, command, transport, config_only):
     """Dry-run a preset: load it, optionally start the server, and report tool compatibility."""
+    # Map legacy transport names
+    if transport == "stdio":
+        transport = "mcp"
+    elif transport == "sse":
+        transport = "mcp"
+
     server_config = _resolve_server_config(preset, config, command, transport)
 
     click.echo(f"Preset: {server_config.get('name', 'custom')}")
@@ -170,14 +182,22 @@ def validate(preset, config, command, transport, config_only):
 
 async def _validate_against_server(server_config):
     from rag_bench.adapter import RAGAdapter
-    from rag_bench.mcp_client import create_client
+    from rag_bench.runner import _create_client
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
-    client = create_client(server_config)
-    async with client:
-        adapter = RAGAdapter(client, server_config)
-        detected = await adapter.detect_tools()
+    client = _create_client(server_config)
+    transport = (server_config.get("transport") or "mcp").lower()
+
+    try:
+        if transport == "mcp" and hasattr(client, '__aenter__'):
+            async with client:
+                adapter = RAGAdapter(client, server_config)
+                detected = await adapter.detect_tools()
+        else:
+            adapter = RAGAdapter(client, server_config)
+            detected = await adapter.detect_tools()
+
         click.echo("\nDetected tools:")
         for slot, name in detected.items():
             status = "OK" if name else "MISSING"
@@ -192,13 +212,18 @@ async def _validate_against_server(server_config):
         click.echo(f"  ingest params: {adapter._ingest_params}")
         click.echo(f"  query params:  {adapter._query_params}")
         click.echo("\nValidation passed.")
+    finally:
+        if transport == "mcp" and hasattr(client, 'stop'):
+            await client.stop()
 
 
 def _resolve_server_config(preset, config, command, transport):
     if not (preset or config or command):
         raise click.ClickException("Provide --preset, --config, or --command")
     if config:
-        return json.loads(Path(config).read_text())
+        loaded = json.loads(Path(config).read_text())
+        _validate_transport(loaded)
+        return loaded
     if preset:
         loaded = _load_preset(preset)
         if loaded is None:
@@ -207,12 +232,31 @@ def _resolve_server_config(preset, config, command, transport):
                 f"Preset '{preset}' not found. Available presets: "
                 + (", ".join(available) if available else "(none)")
             )
+        _validate_transport(loaded)
         return loaded
-    return {
+    result = {
         "name": "custom",
         "command": command,
         "transport": transport,
     }
+    _validate_transport(result)
+    return result
+
+
+_SUPPORTED_TRANSPORT_VALUES = ("mcp", "cli", "inprocess")
+_LEGACY_TRANSPORT_ALIASES = {"stdio": "mcp", "sse": "mcp"}
+
+
+def _validate_transport(server_config: dict) -> None:
+    """Validate that the transport field is one of the supported values."""
+    transport = (server_config.get("transport") or "mcp").lower()
+    # Map legacy names
+    transport = _LEGACY_TRANSPORT_ALIASES.get(transport, transport)
+    if transport not in _SUPPORTED_TRANSPORT_VALUES:
+        raise click.ClickException(
+            f"Unknown transport type '{transport}'. "
+            f"Supported transports: {', '.join(_SUPPORTED_TRANSPORT_VALUES)}"
+        )
 
 
 def _preset_dir() -> Path:
