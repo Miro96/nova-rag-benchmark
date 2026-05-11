@@ -26,6 +26,7 @@ class MCPClient(BaseClient):
     command: str
     args: list[str] = field(default_factory=list)
     env: dict[str, str] | None = None
+    cwd: str | None = None
     _process: asyncio.subprocess.Process | None = field(default=None, init=False, repr=False)
     _request_id: int = field(default=0, init=False, repr=False)
     _tools: list[ToolInfo] = field(default_factory=list, init=False, repr=False)
@@ -41,6 +42,7 @@ class MCPClient(BaseClient):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=self.env,
+            cwd=self.cwd,
         )
         await self._initialize()
 
@@ -206,4 +208,5 @@ def create_client(server_config: dict) -> MCPClient:
     command = server_config.get("command", "")
     args = server_config.get("args", [])
     env = server_config.get("env")
-    return MCPClient(command=command, args=args, env=env)
+    cwd = server_config.get("cwd")
+    return MCPClient(command=command, args=args, env=env, cwd=cwd)

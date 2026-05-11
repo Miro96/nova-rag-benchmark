@@ -7,13 +7,14 @@ import logging
 import os
 import platform
 import shutil
+import subprocess
 import time
 import uuid
 from pathlib import Path
 
 from rag_bench import __version__
 from rag_bench.adapter import RAGAdapter
-from rag_bench.base_client import BaseClient
+from rag_bench.base_client import BaseClient, _resolve_command_parts
 from rag_bench.datasets.loader import (
     Query,
     clone_repo,
@@ -100,6 +101,82 @@ def clean_nova_rag_index(data_dir: Path | None = None) -> Path:
     return target
 
 
+def _run_pre_ingest_commands(
+    repo_dirs: dict[str, Path], server_config: dict,
+) -> None:
+    """Execute preset-defined CLI commands for each repo before MCP ingest.
+
+    Presets like CocoIndex Code require ``ccc init`` + ``ccc index`` to be
+    run via CLI before the MCP server starts (the MCP server only exposes a
+    ``search`` tool, not an ingest tool).  Commands are shell-agnostic:
+    the first token is a program, the rest are positional args.
+
+    The config field ``pre_ingest_commands`` is a list of dicts, each with:
+
+    - ``cmd`` (str): the program to run (e.g. ``"ccc"``).
+      Supports ``"python"`` / ``"python3"`` → resolved to ``sys.executable``.
+    - ``args`` (list[str], optional): positional args.
+    - ``cwd_template`` (str, optional): ``"{repo_path}"`` is substituted.
+
+    Example::
+
+        {
+          "pre_ingest_commands": [
+            {"cmd": "ccc", "args": ["init", "-f"], "cwd_template": "{repo_path}"},
+            {"cmd": "ccc", "args": ["index"], "cwd_template": "{repo_path}"}
+          ]
+        }
+    """
+    commands_cfg = (server_config.get("pre_ingest_commands") or [])
+    if not commands_cfg:
+        return
+
+    logger.info("=== PRE-INGEST COMMANDS ===")
+    for repo_name, repo_dir in repo_dirs.items():
+        logger.info("Pre-ingest for %s (%s)...", repo_name, repo_dir)
+        for cmd_spec in commands_cfg:
+            cmd = cmd_spec.get("cmd", "")
+            args = list(cmd_spec.get("args") or [])
+            cwd_tmpl = cmd_spec.get("cwd_template", "")
+            cwd = cwd_tmpl.replace("{repo_path}", str(repo_dir)) if cwd_tmpl else None
+
+            parts = _resolve_command_parts(cmd, args)
+            logger.info("  Running: %s (cwd=%s)", " ".join(parts), cwd or ".")
+            try:
+                subprocess.run(
+                    parts, cwd=cwd, check=True,
+                    capture_output=True, text=True, timeout=600,
+                )
+            except subprocess.CalledProcessError as e:
+                logger.error(
+                    "Pre-ingest command failed (exit %d): %s\nstderr: %s",
+                    e.returncode, " ".join(parts), e.stderr[-500:],
+                )
+                raise RuntimeError(
+                    f"Pre-ingest command '{' '.join(parts)}' failed with "
+                    f"exit code {e.returncode}: {e.stderr[-300:]}"
+                ) from e
+        logger.info("Pre-ingest for %s complete.", repo_name)
+
+
+def _resolve_cwd_template(server_config: dict, repo_dirs: dict[str, Path]) -> None:
+    """Replace ``{repo_path}`` in the preset's ``cwd`` field with the actual path.
+
+    When only one repo is selected the template is resolved to that repo's
+    cloned directory.  When multiple repos are present the template is
+    resolved to the first repo (most presets that need a working directory
+    only support single-repo mode).
+    """
+    cwd_raw = server_config.get("cwd")
+    if not cwd_raw or "{repo_path}" not in cwd_raw:
+        return
+    if not repo_dirs:
+        return
+    # Pick the first repo for multi-repo runs; single-repo is unambiguous.
+    first_dir = next(iter(repo_dirs.values()))
+    server_config["cwd"] = cwd_raw.replace("{repo_path}", str(first_dir))
+
+
 async def run_benchmark(
     server_config: dict,
     repo_filter: str | None = None,
@@ -143,6 +220,12 @@ async def run_benchmark(
         cleaned = clean_nova_rag_index()
         logger.info("Cleaned index dir at %s", cleaned)
 
+    # Execute pre-ingest CLI commands (e.g. ccc init + ccc index)
+    _run_pre_ingest_commands(repo_dirs, server_config)
+
+    # Resolve cwd template for MCP client (e.g. "{repo_path}" → actual repo dir)
+    _resolve_cwd_template(server_config, repo_dirs)
+
     # Create the appropriate client based on transport type
     client = _create_client(server_config)
 
@@ -171,40 +254,54 @@ async def run_benchmark(
                 logger.info("Startup (init + tools/list): %.1f ms", startup_ms)
 
                 # === INGEST PHASE ===
-                logger.info("=== INGEST PHASE ===")
-                process = client._process
-                sampler = MemorySampler(process.pid if process else None)
-                sampler.start()
+                if detected.get("ingest"):
+                    logger.info("=== INGEST PHASE ===")
+                    process = client._process
+                    sampler = MemorySampler(process.pid if process else None)
+                    sampler.start()
 
-                ingest_start = time.perf_counter()
+                    ingest_start = time.perf_counter()
 
-                for repo in repos:
-                    repo_dir = repo_dirs[repo.name]
-                    files = get_repo_files(repo_dir)
-                    logger.info("Ingesting %s (%d files)...", repo.name, len(files))
+                    for repo in repos:
+                        repo_dir = repo_dirs[repo.name]
+                        files = get_repo_files(repo_dir)
+                        logger.info("Ingesting %s (%d files)...", repo.name, len(files))
 
-                    try:
-                        await adapter.ingest_directory(str(repo_dir))
-                        total_files += len(files)
-                        logger.info("Ingested %s via directory ingest", repo.name)
-                    except (RuntimeError, Exception) as e:
-                        logger.info("Directory ingest failed (%s), trying file-by-file...", e)
-                        for f in files:
-                            try:
-                                await adapter.ingest_file(str(f))
-                                total_files += 1
-                            except Exception as fe:
-                                logger.debug("Failed to ingest %s: %s", f, fe)
+                        try:
+                            await adapter.ingest_directory(str(repo_dir))
+                            total_files += len(files)
+                            logger.info("Ingested %s via directory ingest", repo.name)
+                        except (RuntimeError, Exception) as e:
+                            logger.info("Directory ingest failed (%s), trying file-by-file...", e)
+                            for f in files:
+                                try:
+                                    await adapter.ingest_file(str(f))
+                                    total_files += 1
+                                except Exception as fe:
+                                    logger.debug("Failed to ingest %s: %s", f, fe)
 
-                ingest_sec = time.perf_counter() - ingest_start
+                    ingest_sec = time.perf_counter() - ingest_start
 
-                index_size_mb = _estimate_index_size(server_config, repo_dirs)
+                    index_size_mb = _estimate_index_size(server_config, repo_dirs)
 
-                logger.info(
-                    "Ingest done: %d files in %.1fs (%.1f files/s)",
-                    total_files, ingest_sec,
-                    total_files / ingest_sec if ingest_sec > 0 else 0,
-                )
+                    logger.info(
+                        "Ingest done: %d files in %.1fs (%.1f files/s)",
+                        total_files, ingest_sec,
+                        total_files / ingest_sec if ingest_sec > 0 else 0,
+                    )
+                else:
+                    logger.info(
+                        "=== INGEST PHASE SKIPPED (no ingest tool detected) ==="
+                    )
+                    sampler = MemorySampler(None)
+                    sampler.start()
+                    total_files = sum(
+                        len(get_repo_files(repo_dirs[r.name])) for r in repos
+                    )
+                    logger.info(
+                        "Assuming %d files pre-indexed via pre_ingest_commands",
+                        total_files,
+                    )
 
                 # === WARMUP ===
                 logger.info("=== WARMUP (%d queries) ===", len(warmup_queries))
@@ -246,39 +343,53 @@ async def run_benchmark(
             logger.info("Startup (init + tools/list): %.1f ms", startup_ms)
 
             # === INGEST PHASE ===
-            logger.info("=== INGEST PHASE ===")
-            sampler = MemorySampler(None)
-            sampler.start()
+            if detected.get("ingest"):
+                logger.info("=== INGEST PHASE ===")
+                sampler = MemorySampler(None)
+                sampler.start()
 
-            ingest_start = time.perf_counter()
+                ingest_start = time.perf_counter()
 
-            for repo in repos:
-                repo_dir = repo_dirs[repo.name]
-                files = get_repo_files(repo_dir)
-                logger.info("Ingesting %s (%d files)...", repo.name, len(files))
+                for repo in repos:
+                    repo_dir = repo_dirs[repo.name]
+                    files = get_repo_files(repo_dir)
+                    logger.info("Ingesting %s (%d files)...", repo.name, len(files))
 
-                try:
-                    await adapter.ingest_directory(str(repo_dir))
-                    total_files += len(files)
-                    logger.info("Ingested %s via directory ingest", repo.name)
-                except (RuntimeError, Exception) as e:
-                    logger.info("Directory ingest failed (%s), trying file-by-file...", e)
-                    for f in files:
-                        try:
-                            await adapter.ingest_file(str(f))
-                            total_files += 1
-                        except Exception as fe:
-                            logger.debug("Failed to ingest %s: %s", f, fe)
+                    try:
+                        await adapter.ingest_directory(str(repo_dir))
+                        total_files += len(files)
+                        logger.info("Ingested %s via directory ingest", repo.name)
+                    except (RuntimeError, Exception) as e:
+                        logger.info("Directory ingest failed (%s), trying file-by-file...", e)
+                        for f in files:
+                            try:
+                                await adapter.ingest_file(str(f))
+                                total_files += 1
+                            except Exception as fe:
+                                logger.debug("Failed to ingest %s: %s", f, fe)
 
-            ingest_sec = time.perf_counter() - ingest_start
+                ingest_sec = time.perf_counter() - ingest_start
 
-            index_size_mb = _estimate_index_size(server_config, repo_dirs)
+                index_size_mb = _estimate_index_size(server_config, repo_dirs)
 
-            logger.info(
-                "Ingest done: %d files in %.1fs (%.1f files/s)",
-                total_files, ingest_sec,
-                total_files / ingest_sec if ingest_sec > 0 else 0,
-            )
+                logger.info(
+                    "Ingest done: %d files in %.1fs (%.1f files/s)",
+                    total_files, ingest_sec,
+                    total_files / ingest_sec if ingest_sec > 0 else 0,
+                )
+            else:
+                logger.info(
+                    "=== INGEST PHASE SKIPPED (no ingest tool detected) ==="
+                )
+                sampler = MemorySampler(None)
+                sampler.start()
+                total_files = sum(
+                    len(get_repo_files(repo_dirs[r.name])) for r in repos
+                )
+                logger.info(
+                    "Assuming %d files pre-indexed via pre_ingest_commands",
+                    total_files,
+                )
 
             # === WARMUP ===
             logger.info("=== WARMUP (%d queries) ===", len(warmup_queries))
