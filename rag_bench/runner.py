@@ -859,6 +859,8 @@ def _query_detail(qr: QueryResult) -> dict:
         "tool_calls": qr.tool_calls,
         "returned_files": qr.returned_files[:5],
         "returned_symbols": [s for s in qr.returned_symbols[:5] if s],
+        "expected_files": qr.expected_files,
+        "expected_symbols": qr.expected_symbols,
     }
     if qr.error:
         entry["error"] = qr.error

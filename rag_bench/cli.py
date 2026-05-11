@@ -71,7 +71,19 @@ def run(preset, config, command, transport, repo, ab_baseline, top_k,
 @click.option("--presets", required=True, help="Comma-separated preset names")
 @click.option("--repo", help="Run only on specific repo")
 @click.option("--top-k", default=10)
-def compare(presets, repo, top_k):
+@click.option(
+    "--replicates",
+    default=3,
+    type=click.IntRange(min=1),
+    help="Number of times to run the benchmark query set; reported metrics are the median across replicates.",
+)
+@click.option(
+    "--clean-index",
+    is_flag=True,
+    help="Wipe any existing index directory before ingest for a clean reproducible run.",
+)
+@click.option("--output", "-o", type=click.Path(), help="Output JSON path for comparison report")
+def compare(presets, repo, top_k, replicates, clean_index, output):
     """Compare multiple RAG MCP servers."""
     from rag_bench.runner import run_benchmark
 
@@ -82,16 +94,26 @@ def compare(presets, repo, top_k):
         if not server_config:
             click.echo(f"Preset '{name}' not found, skipping")
             continue
+        click.echo(f"\n=== Running {name} ({replicates} replicates) ===")
         result = asyncio.run(run_benchmark(
             server_config=server_config,
             repo_filter=repo,
             top_k=top_k,
+            replicates=replicates,
+            clean_index=clean_index,
         ))
         results.append(result)
 
     if results:
-        from rag_bench.report import print_comparison_table
+        from rag_bench.report import generate_comparison_report, print_comparison_table
         print_comparison_table(results)
+
+        # Generate structured JSON comparison report
+        report = generate_comparison_report(results, replicates=replicates)
+        output_path = Path(output) if output else Path("results/comparison_report.json")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(report, indent=2, ensure_ascii=False))
+        click.echo(f"\nComparison report saved to {output_path}")
 
 
 @cli.command()

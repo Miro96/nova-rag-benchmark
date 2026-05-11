@@ -1,0 +1,18 @@
+{
+  "name": "grep-glob",
+  "transport": "inprocess",
+  "module": "rag_bench.grep_glob_searcher",
+  "class": "GrepGlobSearcher",
+  "deepseek": {
+    "model": "deepseek-v4-flash",
+    "base_url": "https://api.deepseek.com/v1",
+    "max_iterations": 5,
+    "timeout": 120
+  },
+  "tool_mapping": {
+    "query": {
+      "tool": "code_search",
+      "params": {"query": "{query}", "top_k": "{top_k}"}
+    }
+  }
+}
