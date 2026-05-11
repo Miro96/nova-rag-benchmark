@@ -472,14 +472,7 @@ def _compute_ground_truth_coverage(
         for qd in qds:
             found_union.update(qd.get("returned_files", []))
             if not expected_files and qd.get("expected_files"):
-                # expected_files not in query_details directly, use empty for now
-                pass
-
-        # Get expected_files from first qd that has them
-        for qd in qds:
-            if qd.get("expected_files"):
                 expected_files = qd["expected_files"]
-                break
 
         if expected_files:
             total_expected += len(expected_files)

@@ -742,6 +742,52 @@ class TestGroundTruthCoverage:
         gt = report["ground_truth_coverage"]
         assert gt["queries_analyzed"] == 0
 
+    def test_expected_files_in_query_detail_output(self):
+        """_query_detail() from runner.py includes expected_files and
+        expected_symbols in its output dict."""
+        from rag_bench.runner import _query_detail
+        from rag_bench.metrics import QueryResult
+
+        qr = QueryResult(
+            query_id="Q001",
+            query_text="Where is auth?",
+            query_type="locate",
+            difficulty="medium",
+            expected_files=["src/auth.py", "src/login.py"],
+            expected_symbols=["authenticate", "login_user"],
+            returned_files=["src/auth.py"],
+            returned_symbols=["authenticate"],
+            latency_ms=42.0,
+            tool_calls=3,
+            repo="flask",
+        )
+
+        detail = _query_detail(qr)
+        assert detail["expected_files"] == ["src/auth.py", "src/login.py"]
+        assert detail["expected_symbols"] == ["authenticate", "login_user"]
+        # Verify all required keys are present
+        for key in ("id", "type", "difficulty", "repo", "found_file",
+                     "found_symbol", "latency_ms", "tool_calls",
+                     "returned_files", "returned_symbols",
+                     "expected_files", "expected_symbols"):
+            assert key in detail, f"Missing key '{key}' in query_detail"
+
+    def test_ground_truth_coverage_reads_expected_files(self):
+        """Ground truth coverage correctly reads expected_files from
+        query_details entries (not just from synthetic test helpers)."""
+        qds = [
+            _make_query_detail("Q001", returned_files=["src/auth.py"],
+                               expected_files=["src/auth.py", "src/login.py"]),
+        ]
+        results = [
+            _make_result("test-preset", query_details=qds),
+        ]
+        report = generate_comparison_report(results)
+        gt = report["ground_truth_coverage"]
+        assert gt["queries_analyzed"] == 1
+        assert gt["summary"]["total_expected_files"] == 2
+        assert gt["per_query"]["Q001"]["expected_count"] == 2
+
 
 # ---------------------------------------------------------------------------
 # Unit tests for helper functions
