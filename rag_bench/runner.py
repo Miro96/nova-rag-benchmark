@@ -302,6 +302,9 @@ async def run_benchmark(
                         "Assuming %d files pre-indexed via pre_ingest_commands",
                         total_files,
                     )
+                    # Pre-indexed presets (e.g. CocoIndex) still create an
+                    # on-disk index via pre_ingest_commands; estimate its size.
+                    index_size_mb = _estimate_index_size(server_config, repo_dirs)
 
                 # === WARMUP ===
                 logger.info("=== WARMUP (%d queries) ===", len(warmup_queries))
@@ -390,6 +393,9 @@ async def run_benchmark(
                     "Assuming %d files pre-indexed via pre_ingest_commands",
                     total_files,
                 )
+                # Pre-indexed presets (e.g. CocoIndex) still create an
+                # on-disk index via pre_ingest_commands; estimate its size.
+                index_size_mb = _estimate_index_size(server_config, repo_dirs)
 
             # === WARMUP ===
             logger.info("=== WARMUP (%d queries) ===", len(warmup_queries))
@@ -688,26 +694,37 @@ def _estimate_index_size(
     """Estimate the on-disk size of the server's index in MB.
 
     Resolution order (first non-zero result wins):
-      1. ``server_config['index_dir']`` — explicit override.
-      2. ``server_config['index_dirs']`` — list of paths to sum.
-      3. Per-repo ``<repo>/.nova-rag`` (if a repo's project keeps state in tree).
+      1. ``server_config['index_dir']`` — explicit override (absolute path,
+         e.g. ``~/.nova-rag`` for nova-rag's global cache).
+      2. ``server_config['index_dirs']`` — list of directory *names* declared
+         by the preset (e.g. ``[".cocoindex"]`` or ``[".nova-rag"]``).  Each
+         name is resolved inside every repo directory and the total size
+         across all repos is summed.
+      3. Per-repo ``<repo>/.nova-rag`` (backward-compatible fallback for
+         presets that don't declare ``index_dirs`` but store per-repo state).
       4. ``$NOVA_RAG_DATA_DIR`` if set.
       5. ``~/.nova-rag/`` — nova-rag's default cache location.
 
     Returns 0.0 if no index can be found on disk.
     """
+    # 1. Explicit single path override (e.g. "~/.nova-rag")
     explicit = server_config.get("index_dir")
     if explicit:
         size = directory_size_mb(explicit)
         if size > 0:
             return size
 
-    paths = server_config.get("index_dirs") or []
-    if paths:
-        total = sum(directory_size_mb(p) for p in paths)
+    # 2. Preset-declared index directory names — resolved inside each repo
+    index_dir_names: list[str] = server_config.get("index_dirs") or []
+    if index_dir_names and repo_dirs:
+        total = 0.0
+        for repo_dir in repo_dirs.values():
+            for dir_name in index_dir_names:
+                total += directory_size_mb(repo_dir / dir_name)
         if total > 0:
             return total
 
+    # 3. Backward-compatible: per-repo .nova-rag (hardcoded fallback)
     if repo_dirs:
         per_repo = sum(
             directory_size_mb(Path(d) / ".nova-rag") for d in repo_dirs.values()
@@ -715,12 +732,14 @@ def _estimate_index_size(
         if per_repo > 0:
             return per_repo
 
+    # 4. NOVA_RAG_DATA_DIR env var
     env_dir = os.getenv("NOVA_RAG_DATA_DIR")
     if env_dir:
         size = directory_size_mb(env_dir)
         if size > 0:
             return size
 
+    # 5. Default ~/.nova-rag
     return directory_size_mb(Path.home() / ".nova-rag")
 
 

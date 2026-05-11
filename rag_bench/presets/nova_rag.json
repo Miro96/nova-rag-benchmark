@@ -4,6 +4,7 @@
   "command": "python -m nova_rag",
   "transport": "stdio",
   "index_dir": "~/.nova-rag",
+  "index_dirs": [".nova-rag"],
   "tool_mapping": {
     "ingest": {
       "tool": "rag_index",

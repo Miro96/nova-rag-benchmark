@@ -5,6 +5,7 @@
   "args": ["-m", "cocoindex_code.cli", "mcp"],
   "transport": "mcp",
   "cwd": "{repo_path}",
+  "index_dirs": [".cocoindex"],
   "pre_ingest_commands": [
     {"cmd": "python", "args": ["-m", "cocoindex_code.cli", "init", "-f"], "cwd_template": "{repo_path}"},
     {"cmd": "python", "args": ["-m", "cocoindex_code.cli", "index"], "cwd_template": "{repo_path}"}

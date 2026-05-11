@@ -341,6 +341,14 @@ class TestBenchmarkRun:
         ingest = result["ingest"]
         assert ingest["total_files"] > 0
 
+        # index_size_mb must be > 0 because the CocoIndex preset declares
+        # index_dirs=[".cocoindex"] and pre_ingest_commands create a
+        # .cocoindex/ directory inside each repo (m4-fix-index-size-estimation).
+        assert ingest["index_size_mb"] > 0.0, (
+            f"index_size_mb should be > 0 after CocoIndex benchmark, "
+            f"got {ingest['index_size_mb']}"
+        )
+
         import shutil
         shutil.rmtree(tmp, ignore_errors=True)
 
