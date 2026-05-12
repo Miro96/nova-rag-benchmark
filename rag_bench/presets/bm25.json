@@ -1,0 +1,16 @@
+{
+  "name": "bm25",
+  "transport": "inprocess",
+  "module": "rag_bench.bm25",
+  "class": "BM25Searcher",
+  "tool_mapping": {
+    "ingest": {
+      "tool": "rag_index",
+      "params": {"path": "{path}"}
+    },
+    "query": {
+      "tool": "code_search",
+      "params": {"query": "{query}", "top_k": "{top_k}"}
+    }
+  }
+}
