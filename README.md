@@ -244,7 +244,87 @@ Score = 0.30 * Hit@5
       + 0.10 * ResourceScore
 ```
 
-## Architecture
+## How It Works
+
+### Architecture pipeline
+
+```
+Presets (JSON configs)
+    │
+    ▼
+Runner ──► ingest ──► warmup ──► benchmark ──► results
+    │
+    ▼
+Report generator (Rich tables / JSON / leaderboard submit)
+```
+
+The benchmark follows a strict three-phase pipeline per run:
+
+1. **Ingest** — The RAG server indexes each repository in the dataset. Wall-clock time is measured as "ingest speed" (files/sec). Servers that support pre-existing indexes can skip this phase after the first run.
+
+2. **Warmup** — Each query type is run once (results discarded) to ensure caches, JIT compilers, and connection pools are in steady state before measurement begins.
+
+3. **Benchmark** — All 105 queries are executed against every repository in randomized order. Each query is timed individually (p50/p95/mean latency). Results are compared against known ground truth to compute Hit@K, MRR, MAP, and Symbol Hit@5.
+
+4. **Results** — Metrics are aggregated across 3 independent replicates. Median values are reported with interquartile range (IQR). Statistical significance (A/B deltas) is computed for multi-server comparisons.
+
+### Presets
+
+Each preset is a JSON configuration file that declares a server's transport, tool mapping, and optional pre-ingest steps. The benchmark ships with 5 presets spanning the full spectrum of code retrieval approaches:
+
+| Preset | Approach | Transport | Description |
+|--------|----------|-----------|-------------|
+| `nova-rag` | Hybrid (semantic + graph + keyword) | MCP stdio | Full code graph with callers, callees, impact analysis, and dead code detection |
+| `grep-glob` | Lexical (keyword) | InProcess | Pure ripgrep + glob pattern matching — no embeddings, no indexing |
+| `bm25` | Keyword (statistical) | CLI | BM25 term-frequency scoring via CLI subprocess |
+| `cocoindex-code` | Vector (embedding) | MCP stdio | CocoIndex code retrieval pipeline with chunked embeddings |
+| `naive-rag` | Vector (embedding) | InProcess | Minimal embedding-only similarity search — no code graph, no chunking heuristics |
+
+### Query types
+
+The benchmark includes 105 queries across 10 distinct categories, each testing a different real-world code search need:
+
+| # | Type | Description | Example question |
+|---|------|-------------|------------------|
+| 1 | `locate` | Find where a symbol is defined | "Where is `create_app` defined?" |
+| 2 | `explain` | Understand how a feature works (multi-file) | "How does request dispatching work?" |
+| 3 | `callers` | Find all call sites of a function | "Who calls `full_dispatch_request`?" |
+| 4 | `callees` | Find what a function depends on | "What does `wsgi_app` call?" |
+| 5 | `architecture` | Understand project structure and layering | "How is the routing layer organized?" |
+| 6 | `impact` | Blast radius of changing a function | "What breaks if I change `url_for`?" |
+| 7 | `dead_code` | Detect unused functions and methods | "Is `_get_request` called anywhere?" |
+| 8 | `multi_hop` | Trace transitive relationships across files | "Trace request from WSGI to response" |
+| 9 | `conditional_path` | Find code paths under specific conditions | "What code paths handle 404 errors?" |
+| 10 | `test_traceability` | Map tests to the functions they cover | "Which tests cover `make_response`?" |
+
+### Metrics
+
+Every run computes a comprehensive set of retrieval quality, performance, and efficiency metrics:
+
+| Metric | Category | What it measures | Why it matters |
+|--------|----------|------------------|----------------|
+| **Hit@1 / Hit@5 / Hit@10** | Retrieval | Fraction of queries where at least one correct file appears in top-K results | Measures raw recall — did the engine surface the right file at all? |
+| **Symbol Hit@5** | Retrieval | Fraction of queries where the correct function/class name appears in top-5 results | Unique to rag-bench. Tests whether the engine understands code structure, not just text similarity. Only graph-aware engines can score here. |
+| **MRR** (Mean Reciprocal Rank) | Retrieval | Average of 1/rank of the first correct result | Rewards engines that rank the correct answer higher rather than burying it |
+| **MAP** (Mean Average Precision) | Retrieval | Average precision across all recall levels | Rewards engines that cluster all relevant results at the top |
+| **Latency p50 / p95 / mean** | Performance | Query response time percentiles in milliseconds | Real-world responsiveness. p95 captures tail latency that users notice |
+| **Ingest Speed** (files/sec) | Efficiency | Number of source files indexed per second | Matters for large codebases and CI/CD integration |
+| **RAM / Index Size** | Efficiency | Peak memory and on-disk index footprint | Resource budget for constrained environments |
+| **Composite Score** | Aggregate | Weighted combination (see formula below) | Single number for leaderboard ranking |
+| **A/B Delta** | Comparative | Statistical difference between two servers across all metrics | Answers "is server A actually better than server B?" with confidence intervals |
+
+### Reproducibility
+
+Every result in the comparison table is the **median of 3 independent replicates** with seeded randomness (seed fixed per replicate for deterministic shuffling). This ensures:
+
+- **Within-replicate determinism**: Same seed → same query order → identical results for a given server version
+- **Across-replicate variance**: Each replicate uses a different random seed, capturing natural variability in server startup, OS scheduling, and I/O
+- **IQR reporting**: Interquartile range shows the spread — small IQR means the metric is stable; large IQR flags noise
+- **Statistical rigor**: A/B comparison uses paired testing across replicates to compute delta confidence intervals
+
+All presets in the comparison table had coefficient of variation (CV) < 0.05 for composite score across 3 replicates.
+
+### Code layout
 
 ```
 rag_bench/
@@ -288,6 +368,26 @@ Existing benchmarks don't cover the RAG + MCP + code search intersection:
 | A/B: RAG vs no RAG | Partial | Yes | No | **Yes** |
 | Custom repos | No | No | No | **Yes** |
 | Leaderboard | No | No | HuggingFace | **Self-hosted** |
+
+## Comparison with Other Benchmarks
+
+Existing benchmarks evaluate either embedding models, document retrieval, or coding agents — none measures end-to-end code intelligence retrieval pipelines. Here's how rag-bench differs:
+
+| Benchmark | Domain | What it measures | Graph queries? | Symbol matching? | Leaderboard? | Why rag-bench is different |
+|-----------|--------|------------------|----------------|-------------------|--------------|---------------------------|
+| [**MTEB**](https://huggingface.co/spaces/mteb/leaderboard) | Text embeddings | Embedding model quality on 100+ datasets (clustering, classification, STS, retrieval) | No | No | Yes (HuggingFace) | Tests only the embedding layer, not the full retrieval pipeline. No code-specific tasks — models are ranked by how well they embed StackOverflow questions, not how well they find the right function in a codebase. No graph queries, no symbol matching. |
+| [**CoIR**](https://github.com/CoIR-team/coir) (ACL 2025) | Code retrieval | Text-to-code and code-to-code retrieval quality using 10 code-specific datasets | No | No | No (dataset only) | Closest to rag-bench in domain, but limited to embedding-based retrieval: "given a natural language description, find the code" or "given code, find similar code." No graph queries (callers, callees, impact), no dead code detection, no symbol-level accuracy. No public leaderboard — results must be reproduced from paper. |
+| [**CRAG**](https://www.cragbenchmark.org/) (Comprehensive RAG) | Document QA + Web | Factual question answering over documents, web search, and knowledge graphs | No | No | Yes | General-purpose document RAG, not code. Queries are Wikipedia-style facts ("When did X happen?"), not code search. No code graph navigation, no multilanguage codebase testing. |
+| [**SWE-bench**](https://www.swebench.com/) | Coding agents | End-to-end bug fixing: given a GitHub issue, produce a correct patch | No | No | Yes | Measures agent coding ability (can the LLM write a correct fix?), not retrieval quality. A SWE-bench agent may use RAG internally, but the benchmark doesn't isolate or measure search quality — it measures patch correctness. Complements rag-bench: SWE-bench tests the agent, rag-bench tests the retrieval engine the agent uses. |
+| **rag-bench** (this repo) | **Code intelligence retrieval** | End-to-end search pipeline: hybrid, lexical, vector, and graph-based retrieval compared side-by-side on real codebases | **Yes** (callers, callees, impact, multi-hop, architecture) | **Yes** (Symbol Hit@5) | **Yes** (self-hosted) | The only benchmark that: (1) tests graph queries essential for real code navigation, (2) measures symbol-level accuracy (did you find the right function, not just the right file?), (3) detects dead code, and (4) compares multiple retrieval strategies head-to-head — not just embedding models but also grep/glob and hybrid approaches. |
+
+### Why these differences matter
+
+- **Embedding-only benchmarks (MTEB, CoIR)** tell you which model to use, but not whether your retrieval pipeline works. A great embedding model with poor chunking, no graph, and no hybrid fallback will still fail on real code queries.
+- **Document QA benchmarks (CRAG)** test a fundamentally different problem: finding facts in prose documents vs finding the right function in a codebase with imports, inheritance, and control flow.
+- **Agent benchmarks (SWE-bench)** conflate retrieval quality with coding ability. A perfect retriever paired with a weak LLM scores poorly; a weak retriever with a strong LLM that re-reads the entire repo can still pass.
+
+rag-bench isolates retrieval quality from the LLM so you can measure and improve the search engine independently.
 
 ## License
 
