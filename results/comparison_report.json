@@ -10,25 +10,25 @@
   "replicates": 3,
   "metrics": {
     "nova-rag": {
-      "hit_at_1": 0.2095,
-      "hit_at_3": 0.381,
-      "hit_at_5": 0.419,
-      "hit_at_10": 0.4762,
+      "hit_at_1": 0.2952,
+      "hit_at_3": 0.3524,
+      "hit_at_5": 0.381,
+      "hit_at_10": 0.4095,
       "symbol_hit_at_5": 0.2952,
-      "mrr": 0.2969,
-      "map": 0.2969,
-      "latency_p50_ms": 10.6,
-      "latency_p95_ms": 16.0,
-      "latency_p99_ms": 20.7,
-      "latency_mean_ms": 11.0,
+      "mrr": 0.332,
+      "map": 0.332,
+      "latency_p50_ms": 1258.6,
+      "latency_p95_ms": 1868.7,
+      "latency_p99_ms": 2019.1,
+      "latency_mean_ms": 1215.5,
       "total_queries": 105,
-      "total_hits": 44,
+      "total_hits": 38,
       "ingest_total_files": 2435,
-      "ingest_total_sec": 0.18,
-      "ingest_files_per_sec": 13320.8,
-      "index_size_mb": 30.9,
-      "ram_peak_mb": 1396.4,
-      "composite_score": 0.5342,
+      "ingest_total_sec": 0.2,
+      "ingest_files_per_sec": 11966.7,
+      "index_size_mb": 70.8,
+      "ram_peak_mb": 1617.7,
+      "composite_score": 0.4287,
       "avg_tool_calls": 1.0
     },
     "naive-rag": {
@@ -39,18 +39,18 @@
       "symbol_hit_at_5": 0.1333,
       "mrr": 0.0369,
       "map": 0.0369,
-      "latency_p50_ms": 1.8,
-      "latency_p95_ms": 2.2,
-      "latency_p99_ms": 2.6,
+      "latency_p50_ms": 1.9,
+      "latency_p95_ms": 2.1,
+      "latency_p99_ms": 2.3,
       "latency_mean_ms": 1.9,
       "total_queries": 105,
       "total_hits": 7,
       "ingest_total_files": 2435,
-      "ingest_total_sec": 7.76,
-      "ingest_files_per_sec": 314.0,
-      "index_size_mb": 30.9,
+      "ingest_total_sec": 7.63,
+      "ingest_files_per_sec": 319.3,
+      "index_size_mb": 70.8,
       "ram_peak_mb": 0.0,
-      "composite_score": 0.3672,
+      "composite_score": 0.3636,
       "avg_tool_calls": 1.0
     },
     "cocoindex-code": {
@@ -61,18 +61,18 @@
       "symbol_hit_at_5": 0.0,
       "mrr": 0.0994,
       "map": 0.0994,
-      "latency_p50_ms": 226.7,
-      "latency_p95_ms": 353.7,
-      "latency_p99_ms": 393.3,
-      "latency_mean_ms": 255.9,
+      "latency_p50_ms": 242.7,
+      "latency_p95_ms": 349.0,
+      "latency_p99_ms": 383.2,
+      "latency_mean_ms": 272.0,
       "total_queries": 105,
       "total_hits": 17,
       "ingest_total_files": 2435,
       "ingest_total_sec": 0.0,
       "ingest_files_per_sec": 0.0,
-      "index_size_mb": 30.9,
+      "index_size_mb": 70.8,
       "ram_peak_mb": 0.0,
-      "composite_score": 0.3463,
+      "composite_score": 0.3431,
       "avg_tool_calls": 1.0
     },
     "grep-glob": {
@@ -83,18 +83,18 @@
       "symbol_hit_at_5": 0.0,
       "mrr": 0.3395,
       "map": 0.3395,
-      "latency_p50_ms": 13.4,
-      "latency_p95_ms": 47.9,
-      "latency_p99_ms": 55.9,
-      "latency_mean_ms": 18.5,
+      "latency_p50_ms": 10.5,
+      "latency_p95_ms": 35.4,
+      "latency_p99_ms": 36.7,
+      "latency_mean_ms": 14.3,
       "total_queries": 105,
       "total_hits": 58,
       "ingest_total_files": 2435,
       "ingest_total_sec": 0.0,
       "ingest_files_per_sec": 0.0,
-      "index_size_mb": 30.9,
+      "index_size_mb": 70.8,
       "ram_peak_mb": 0.0,
-      "composite_score": 0.5318,
+      "composite_score": 0.5299,
       "avg_tool_calls": 1.0
     },
     "bm25": {
@@ -105,34 +105,34 @@
       "symbol_hit_at_5": 0.0095,
       "mrr": 0.0366,
       "map": 0.0366,
-      "latency_p50_ms": 1.4,
-      "latency_p95_ms": 5.6,
-      "latency_p99_ms": 10.5,
-      "latency_mean_ms": 2.1,
+      "latency_p50_ms": 1.2,
+      "latency_p95_ms": 4.6,
+      "latency_p99_ms": 5.3,
+      "latency_mean_ms": 1.6,
       "total_queries": 105,
       "total_hits": 6,
       "ingest_total_files": 2435,
-      "ingest_total_sec": 1.15,
-      "ingest_files_per_sec": 2116.8,
-      "index_size_mb": 30.9,
+      "ingest_total_sec": 0.87,
+      "ingest_files_per_sec": 2797.4,
+      "index_size_mb": 70.8,
       "ram_peak_mb": 0.0,
-      "composite_score": 0.3452,
+      "composite_score": 0.3418,
       "avg_tool_calls": 1.0
     }
   },
   "ab_deltas_vs_baseline": {
     "nova-rag": {
-      "hit_at_1": 0.0095,
-      "hit_at_3": -0.0095,
-      "hit_at_5": -0.1334,
-      "hit_at_10": -0.2667,
+      "hit_at_1": 0.0952,
+      "hit_at_3": -0.0381,
+      "hit_at_5": -0.1714,
+      "hit_at_10": -0.3334,
       "symbol_hit_at_5": 0.2952,
-      "mrr": -0.0426,
-      "composite_score": 0.0024,
-      "latency_p50_ms": 2.8,
-      "latency_p95_ms": 31.9,
-      "latency_p99_ms": 35.2,
-      "latency_mean_ms": 7.5
+      "mrr": -0.0075,
+      "composite_score": -0.1012,
+      "latency_p50_ms": -1248.1,
+      "latency_p95_ms": -1833.3,
+      "latency_p99_ms": -1982.4,
+      "latency_mean_ms": -1201.2
     },
     "naive-rag": {
       "hit_at_1": -0.181,
@@ -141,11 +141,11 @@
       "hit_at_10": -0.6667,
       "symbol_hit_at_5": 0.1333,
       "mrr": -0.3026,
-      "composite_score": -0.1646,
-      "latency_p50_ms": 11.6,
-      "latency_p95_ms": 45.7,
-      "latency_p99_ms": 53.3,
-      "latency_mean_ms": 16.6
+      "composite_score": -0.1663,
+      "latency_p50_ms": 8.6,
+      "latency_p95_ms": 33.3,
+      "latency_p99_ms": 34.4,
+      "latency_mean_ms": 12.4
     },
     "cocoindex-code": {
       "hit_at_1": -0.1524,
@@ -154,11 +154,11 @@
       "hit_at_10": -0.5048,
       "symbol_hit_at_5": 0.0,
       "mrr": -0.2401,
-      "composite_score": -0.1855,
-      "latency_p50_ms": -213.3,
-      "latency_p95_ms": -305.8,
-      "latency_p99_ms": -337.4,
-      "latency_mean_ms": -237.4
+      "composite_score": -0.1868,
+      "latency_p50_ms": -232.2,
+      "latency_p95_ms": -313.6,
+      "latency_p99_ms": -346.5,
+      "latency_mean_ms": -257.7
     },
     "bm25": {
       "hit_at_1": -0.181,
@@ -167,17 +167,17 @@
       "hit_at_10": -0.6477,
       "symbol_hit_at_5": 0.0095,
       "mrr": -0.3029,
-      "composite_score": -0.1866,
-      "latency_p50_ms": 12.0,
-      "latency_p95_ms": 42.3,
-      "latency_p99_ms": 45.4,
-      "latency_mean_ms": 16.4
+      "composite_score": -0.1881,
+      "latency_p50_ms": 9.3,
+      "latency_p95_ms": 30.8,
+      "latency_p99_ms": 31.4,
+      "latency_mean_ms": 12.7
     }
   },
   "summary": [
     {
       "metric": "Hit@1",
-      "nova-rag": 0.2095,
+      "nova-rag": 0.2952,
       "naive-rag": 0.019,
       "cocoindex-code": 0.0476,
       "grep-glob": 0.2,
@@ -185,7 +185,7 @@
     },
     {
       "metric": "Hit@3",
-      "nova-rag": 0.381,
+      "nova-rag": 0.3524,
       "naive-rag": 0.0476,
       "cocoindex-code": 0.1333,
       "grep-glob": 0.3905,
@@ -193,7 +193,7 @@
     },
     {
       "metric": "Hit@5",
-      "nova-rag": 0.419,
+      "nova-rag": 0.381,
       "naive-rag": 0.0667,
       "cocoindex-code": 0.1619,
       "grep-glob": 0.5524,
@@ -201,7 +201,7 @@
     },
     {
       "metric": "Hit@10",
-      "nova-rag": 0.4762,
+      "nova-rag": 0.4095,
       "naive-rag": 0.0762,
       "cocoindex-code": 0.2381,
       "grep-glob": 0.7429,
@@ -217,7 +217,7 @@
     },
     {
       "metric": "MRR",
-      "nova-rag": 0.2969,
+      "nova-rag": 0.332,
       "naive-rag": 0.0369,
       "cocoindex-code": 0.0994,
       "grep-glob": 0.3395,
@@ -225,7 +225,7 @@
     },
     {
       "metric": "MAP",
-      "nova-rag": 0.2969,
+      "nova-rag": 0.332,
       "naive-rag": 0.0369,
       "cocoindex-code": 0.0994,
       "grep-glob": 0.3395,
@@ -233,27 +233,27 @@
     },
     {
       "metric": "Latency p50 (ms)",
-      "nova-rag": 10.6,
-      "naive-rag": 1.8,
-      "cocoindex-code": 226.7,
-      "grep-glob": 13.4,
-      "bm25": 1.4
+      "nova-rag": 1258.6,
+      "naive-rag": 1.9,
+      "cocoindex-code": 242.7,
+      "grep-glob": 10.5,
+      "bm25": 1.2
     },
     {
       "metric": "Latency p95 (ms)",
-      "nova-rag": 16.0,
-      "naive-rag": 2.2,
-      "cocoindex-code": 353.7,
-      "grep-glob": 47.9,
-      "bm25": 5.6
+      "nova-rag": 1868.7,
+      "naive-rag": 2.1,
+      "cocoindex-code": 349.0,
+      "grep-glob": 35.4,
+      "bm25": 4.6
     },
     {
       "metric": "Latency mean (ms)",
-      "nova-rag": 11.0,
+      "nova-rag": 1215.5,
       "naive-rag": 1.9,
-      "cocoindex-code": 255.9,
-      "grep-glob": 18.5,
-      "bm25": 2.1
+      "cocoindex-code": 272.0,
+      "grep-glob": 14.3,
+      "bm25": 1.6
     },
     {
       "metric": "Ingest Files",
@@ -265,31 +265,31 @@
     },
     {
       "metric": "Ingest Time (s)",
-      "nova-rag": 0.18,
-      "naive-rag": 7.76,
+      "nova-rag": 0.2,
+      "naive-rag": 7.63,
       "cocoindex-code": 0.0,
       "grep-glob": 0.0,
-      "bm25": 1.15
+      "bm25": 0.87
     },
     {
       "metric": "Ingest Speed (f/s)",
-      "nova-rag": 13320.8,
-      "naive-rag": 314.0,
+      "nova-rag": 11966.7,
+      "naive-rag": 319.3,
       "cocoindex-code": 0.0,
       "grep-glob": 0.0,
-      "bm25": 2116.8
+      "bm25": 2797.4
     },
     {
       "metric": "Index Size (MB)",
-      "nova-rag": 30.9,
-      "naive-rag": 30.9,
-      "cocoindex-code": 30.9,
-      "grep-glob": 30.9,
-      "bm25": 30.9
+      "nova-rag": 70.8,
+      "naive-rag": 70.8,
+      "cocoindex-code": 70.8,
+      "grep-glob": 70.8,
+      "bm25": 70.8
     },
     {
       "metric": "RAM Peak (MB)",
-      "nova-rag": 1396.4,
+      "nova-rag": 1617.7,
       "naive-rag": 0.0,
       "cocoindex-code": 0.0,
       "grep-glob": 0.0,
@@ -297,35 +297,35 @@
     },
     {
       "metric": "Composite Score",
-      "nova-rag": 0.5342,
-      "naive-rag": 0.3672,
-      "cocoindex-code": 0.3463,
-      "grep-glob": 0.5318,
-      "bm25": 0.3452
+      "nova-rag": 0.4287,
+      "naive-rag": 0.3636,
+      "cocoindex-code": 0.3431,
+      "grep-glob": 0.5299,
+      "bm25": 0.3418
     }
   ],
   "by_difficulty": {
     "nova-rag": {
       "easy": {
         "count": 30,
-        "hit_at_5": 0.5666666666666667,
-        "symbol_hit_at_5": 0.4666666666666667,
-        "mrr": 0.3837037037037037,
-        "latency_p50_ms": 10.882065493206028
+        "hit_at_5": 0.5,
+        "symbol_hit_at_5": 0.43333333333333335,
+        "mrr": 0.445,
+        "latency_p50_ms": 1260.1835835000088
       },
       "medium": {
         "count": 38,
-        "hit_at_5": 0.3684210526315789,
+        "hit_at_5": 0.2894736842105263,
         "symbol_hit_at_5": 0.18421052631578946,
-        "mrr": 0.2715643274853801,
-        "latency_p50_ms": 10.043809001217596
+        "mrr": 0.24385964912280703,
+        "latency_p50_ms": 1254.6786999999995
       },
       "hard": {
         "count": 37,
-        "hit_at_5": 0.35135135135135137,
-        "symbol_hit_at_5": 0.2702702702702703,
-        "mrr": 0.2525096525096525,
-        "latency_p50_ms": 10.286087999702431
+        "hit_at_5": 0.32432432432432434,
+        "symbol_hit_at_5": 0.2972972972972973,
+        "mrr": 0.31981981981981983,
+        "latency_p50_ms": 1265.8286189999899
       }
     },
     "naive-rag": {
@@ -334,21 +334,21 @@
         "hit_at_5": 0.03333333333333333,
         "symbol_hit_at_5": 0.2,
         "mrr": 0.03333333333333333,
-        "latency_p50_ms": 1.8265364997205324
+        "latency_p50_ms": 1.8611169999758204
       },
       "medium": {
         "count": 38,
         "hit_at_5": 0.07894736842105263,
         "symbol_hit_at_5": 0.13157894736842105,
         "mrr": 0.02719298245614035,
-        "latency_p50_ms": 1.818080505472608
+        "latency_p50_ms": 1.8686469999238398
       },
       "hard": {
         "count": 37,
         "hit_at_5": 0.08108108108108109,
         "symbol_hit_at_5": 0.08108108108108109,
         "mrr": 0.0498069498069498,
-        "latency_p50_ms": 1.9418409938225523
+        "latency_p50_ms": 1.9540260000212584
       }
     },
     "cocoindex-code": {
@@ -357,21 +357,21 @@
         "hit_at_5": 0.1,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.0517989417989418,
-        "latency_p50_ms": 238.1137479969766
+        "latency_p50_ms": 290.10466900001575
       },
       "medium": {
         "count": 38,
         "hit_at_5": 0.18421052631578946,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.10551378446115288,
-        "latency_p50_ms": 266.0275609960081
+        "latency_p50_ms": 308.1433700000389
       },
       "hard": {
         "count": 37,
         "hit_at_5": 0.1891891891891892,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.1316066066066066,
-        "latency_p50_ms": 324.43870199494995
+        "latency_p50_ms": 328.57025599992085
       }
     },
     "grep-glob": {
@@ -380,21 +380,21 @@
         "hit_at_5": 0.5666666666666667,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.36080687830687835,
-        "latency_p50_ms": 14.227048501197714
+        "latency_p50_ms": 8.998727499943016
       },
       "medium": {
         "count": 38,
         "hit_at_5": 0.5,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.2764515455304929,
-        "latency_p50_ms": 15.316045501094777
+        "latency_p50_ms": 10.464603500054181
       },
       "hard": {
         "count": 37,
         "hit_at_5": 0.5945945945945946,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.38686186186186183,
-        "latency_p50_ms": 15.080785000463948
+        "latency_p50_ms": 11.179704999904061
       }
     },
     "bm25": {
@@ -403,21 +403,21 @@
         "hit_at_5": 0.03333333333333333,
         "symbol_hit_at_5": 0.03333333333333333,
         "mrr": 0.01111111111111111,
-        "latency_p50_ms": 1.2334610073594376
+        "latency_p50_ms": 1.0929139999689141
       },
       "medium": {
         "count": 38,
         "hit_at_5": 0.05263157894736842,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.03665413533834586,
-        "latency_p50_ms": 1.2636035025934689
+        "latency_p50_ms": 1.0527739999588448
       },
       "hard": {
         "count": 37,
         "hit_at_5": 0.08108108108108109,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.057207207207207206,
-        "latency_p50_ms": 2.0775380107806996
+        "latency_p50_ms": 1.5763610001613415
       }
     }
   },
@@ -425,73 +425,73 @@
     "nova-rag": {
       "locate": {
         "count": 49,
-        "hit_at_5": 0.4897959183673469,
-        "symbol_hit_at_5": 0.32653061224489793,
-        "mrr": 0.3458616780045351,
-        "latency_p50_ms": 10.726900000008754
+        "hit_at_5": 0.40816326530612246,
+        "symbol_hit_at_5": 0.30612244897959184,
+        "mrr": 0.35612244897959183,
+        "latency_p50_ms": 1258.6485980000361
       },
       "explain": {
         "count": 18,
-        "hit_at_5": 0.4444444444444444,
-        "symbol_hit_at_5": 0.2777777777777778,
-        "mrr": 0.3101851851851852,
-        "latency_p50_ms": 10.995151002134662
+        "hit_at_5": 0.2777777777777778,
+        "symbol_hit_at_5": 0.2222222222222222,
+        "mrr": 0.24074074074074078,
+        "latency_p50_ms": 1302.028651500109
       },
       "callers": {
         "count": 12,
         "hit_at_5": 0.25,
-        "symbol_hit_at_5": 0.16666666666666666,
-        "mrr": 0.20833333333333334,
-        "latency_p50_ms": 10.780822500237264
+        "symbol_hit_at_5": 0.25,
+        "mrr": 0.25,
+        "latency_p50_ms": 1177.812061499992
       },
       "impact": {
         "count": 14,
         "hit_at_5": 0.14285714285714285,
         "symbol_hit_at_5": 0.14285714285714285,
-        "mrr": 0.10714285714285714,
-        "latency_p50_ms": 9.851437498582527
+        "mrr": 0.14285714285714285,
+        "latency_p50_ms": 1213.0409135000377
       },
       "multi_hop": {
         "count": 3,
         "hit_at_5": 0.3333333333333333,
         "symbol_hit_at_5": 0.3333333333333333,
-        "mrr": 0.15873015873015872,
-        "latency_p50_ms": 10.55540500965435
+        "mrr": 0.3888888888888889,
+        "latency_p50_ms": 1304.0885439999101
       },
       "cross_package": {
         "count": 3,
-        "hit_at_5": 0.6666666666666666,
-        "symbol_hit_at_5": 0.6666666666666666,
-        "mrr": 0.4444444444444444,
-        "latency_p50_ms": 11.367717001121491
+        "hit_at_5": 1.0,
+        "symbol_hit_at_5": 1.0,
+        "mrr": 0.8333333333333334,
+        "latency_p50_ms": 1300.2307350000137
       },
       "architecture": {
         "count": 3,
         "hit_at_5": 0.6666666666666666,
         "symbol_hit_at_5": 0.6666666666666666,
         "mrr": 0.6666666666666666,
-        "latency_p50_ms": 10.892300997511484
+        "latency_p50_ms": 1357.3513540000022
       },
       "test_traceability": {
         "count": 1,
         "hit_at_5": 1.0,
         "symbol_hit_at_5": 0.0,
-        "mrr": 0.3333333333333333,
-        "latency_p50_ms": 8.45379100064747
+        "mrr": 1.0,
+        "latency_p50_ms": 1307.9598909999959
       },
       "conditional_path": {
         "count": 1,
         "hit_at_5": 1.0,
         "symbol_hit_at_5": 1.0,
-        "mrr": 0.5,
-        "latency_p50_ms": 17.985233003855683
+        "mrr": 1.0,
+        "latency_p50_ms": 1325.935297000001
       },
       "dead_code": {
         "count": 1,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.0,
-        "latency_p50_ms": 2.8822210006183013
+        "latency_p50_ms": 3.373929000190401
       }
     },
     "naive-rag": {
@@ -500,70 +500,70 @@
         "hit_at_5": 0.061224489795918366,
         "symbol_hit_at_5": 0.14285714285714285,
         "mrr": 0.03129251700680272,
-        "latency_p50_ms": 1.8217340111732483
+        "latency_p50_ms": 1.862883000057991
       },
       "explain": {
         "count": 18,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.1111111111111111,
         "mrr": 0.0,
-        "latency_p50_ms": 1.823741004045587
+        "latency_p50_ms": 1.870928999892385
       },
       "callers": {
         "count": 12,
         "hit_at_5": 0.08333333333333333,
         "symbol_hit_at_5": 0.16666666666666666,
         "mrr": 0.041666666666666664,
-        "latency_p50_ms": 1.813557006244082
+        "latency_p50_ms": 1.8729175000089526
       },
       "impact": {
         "count": 14,
         "hit_at_5": 0.07142857142857142,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.03571428571428571,
-        "latency_p50_ms": 1.841063996835146
+        "latency_p50_ms": 1.8698005001169804
       },
       "multi_hop": {
         "count": 3,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.3333333333333333,
         "mrr": 0.0,
-        "latency_p50_ms": 2.0438420033315197
+        "latency_p50_ms": 2.095499999995809
       },
       "cross_package": {
         "count": 3,
         "hit_at_5": 0.3333333333333333,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.06666666666666667,
-        "latency_p50_ms": 2.0542900019790977
+        "latency_p50_ms": 2.0678050000242365
       },
       "architecture": {
         "count": 3,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.3333333333333333,
         "mrr": 0.047619047619047616,
-        "latency_p50_ms": 2.074222997180186
+        "latency_p50_ms": 2.044300000079602
       },
       "test_traceability": {
         "count": 1,
         "hit_at_5": 1.0,
         "symbol_hit_at_5": 1.0,
         "mrr": 1.0,
-        "latency_p50_ms": 2.0029200095450506
+        "latency_p50_ms": 2.0146790000126202
       },
       "conditional_path": {
         "count": 1,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.0,
-        "latency_p50_ms": 2.0775349985342473
+        "latency_p50_ms": 2.0221199999923556
       },
       "dead_code": {
         "count": 1,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.0,
-        "latency_p50_ms": 2.18958398909308
+        "latency_p50_ms": 2.0506600001226616
       }
     },
     "cocoindex-code": {
@@ -572,70 +572,70 @@
         "hit_at_5": 0.08163265306122448,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.04143181081956592,
-        "latency_p50_ms": 256.1498060094891
+        "latency_p50_ms": 262.5744269998904
       },
       "explain": {
         "count": 18,
         "hit_at_5": 0.16666666666666666,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.10802469135802469,
-        "latency_p50_ms": 260.14703549299156
+        "latency_p50_ms": 316.1906764999003
       },
       "callers": {
         "count": 12,
         "hit_at_5": 0.25,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.15555555555555556,
-        "latency_p50_ms": 267.282475499087
+        "latency_p50_ms": 322.36622750008337
       },
       "impact": {
         "count": 14,
         "hit_at_5": 0.35714285714285715,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.2261904761904762,
-        "latency_p50_ms": 262.63638750242535
+        "latency_p50_ms": 329.1937050000797
       },
       "multi_hop": {
         "count": 3,
         "hit_at_5": 0.3333333333333333,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.3333333333333333,
-        "latency_p50_ms": 242.8017810016172
+        "latency_p50_ms": 329.93290800004615
       },
       "cross_package": {
         "count": 3,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.041666666666666664,
-        "latency_p50_ms": 325.75163200090174
+        "latency_p50_ms": 236.74004999998033
       },
       "architecture": {
         "count": 3,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.03333333333333333,
-        "latency_p50_ms": 391.73355099046603
+        "latency_p50_ms": 239.27871599994432
       },
       "test_traceability": {
         "count": 1,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.0,
-        "latency_p50_ms": 328.86103600321803
+        "latency_p50_ms": 445.1204480001252
       },
       "conditional_path": {
         "count": 1,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.0,
-        "latency_p50_ms": 324.60960700700525
+        "latency_p50_ms": 327.5965850000375
       },
       "dead_code": {
         "count": 1,
         "hit_at_5": 1.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.2,
-        "latency_p50_ms": 347.809707003762
+        "latency_p50_ms": 229.80958200014356
       }
     },
     "grep-glob": {
@@ -644,70 +644,70 @@
         "hit_at_5": 0.4897959183673469,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.32217363135730476,
-        "latency_p50_ms": 14.36714400188066
+        "latency_p50_ms": 8.727294999971491
       },
       "explain": {
         "count": 18,
         "hit_at_5": 0.4444444444444444,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.2017636684303351,
-        "latency_p50_ms": 16.74785650538979
+        "latency_p50_ms": 12.284399500003929
       },
       "callers": {
         "count": 12,
         "hit_at_5": 0.6666666666666666,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.3819444444444444,
-        "latency_p50_ms": 12.98901699919952
+        "latency_p50_ms": 9.020929000030264
       },
       "impact": {
         "count": 14,
         "hit_at_5": 0.6428571428571429,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.4755952380952381,
-        "latency_p50_ms": 12.8541559970472
+        "latency_p50_ms": 10.35761499997534
       },
       "multi_hop": {
         "count": 3,
         "hit_at_5": 1.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.3611111111111111,
-        "latency_p50_ms": 16.129038005601615
+        "latency_p50_ms": 11.179704999904061
       },
       "cross_package": {
         "count": 3,
         "hit_at_5": 0.6666666666666666,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.2333333333333333,
-        "latency_p50_ms": 13.494047001586296
+        "latency_p50_ms": 13.115363999986585
       },
       "architecture": {
         "count": 3,
         "hit_at_5": 0.6666666666666666,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.39999999999999997,
-        "latency_p50_ms": 16.940472996793687
+        "latency_p50_ms": 12.691919999952006
       },
       "test_traceability": {
         "count": 1,
         "hit_at_5": 1.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 1.0,
-        "latency_p50_ms": 18.74471599876415
+        "latency_p50_ms": 14.667344999907073
       },
       "conditional_path": {
         "count": 1,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.0,
-        "latency_p50_ms": 66.68832099239808
+        "latency_p50_ms": 35.59228099993561
       },
       "dead_code": {
         "count": 1,
         "hit_at_5": 1.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 1.0,
-        "latency_p50_ms": 13.718513990170322
+        "latency_p50_ms": 9.391885000013644
       }
     },
     "bm25": {
@@ -716,70 +716,70 @@
         "hit_at_5": 0.04081632653061224,
         "symbol_hit_at_5": 0.02040816326530612,
         "mrr": 0.014820213799805634,
-        "latency_p50_ms": 1.2296290078666061
+        "latency_p50_ms": 1.0637620000579773
       },
       "explain": {
         "count": 18,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.0,
-        "latency_p50_ms": 1.558791998832021
+        "latency_p50_ms": 1.2373695000178486
       },
       "callers": {
         "count": 12,
         "hit_at_5": 0.16666666666666666,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.10416666666666667,
-        "latency_p50_ms": 1.1739934998331591
+        "latency_p50_ms": 0.8162659999015887
       },
       "impact": {
         "count": 14,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.019047619047619046,
-        "latency_p50_ms": 1.9400009987293743
+        "latency_p50_ms": 1.5687220000017987
       },
       "multi_hop": {
         "count": 3,
         "hit_at_5": 0.3333333333333333,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.3333333333333333,
-        "latency_p50_ms": 5.835115996887907
+        "latency_p50_ms": 4.929953000100795
       },
       "cross_package": {
         "count": 3,
         "hit_at_5": 0.3333333333333333,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.16666666666666666,
-        "latency_p50_ms": 5.28661601128988
+        "latency_p50_ms": 4.366916999970272
       },
       "architecture": {
         "count": 3,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.03333333333333333,
-        "latency_p50_ms": 4.662963008740917
+        "latency_p50_ms": 3.9669850000336737
       },
       "test_traceability": {
         "count": 1,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.0,
-        "latency_p50_ms": 3.929720012820326
+        "latency_p50_ms": 3.4819130000869336
       },
       "conditional_path": {
         "count": 1,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.0,
-        "latency_p50_ms": 10.136651995708235
+        "latency_p50_ms": 4.865154000071925
       },
       "dead_code": {
         "count": 1,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.0,
-        "latency_p50_ms": 20.457369013456628
+        "latency_p50_ms": 5.302075999907174
       }
     }
   },
@@ -787,24 +787,24 @@
     "nova-rag": {
       "express": {
         "count": 35,
-        "hit_at_5": 0.2571428571428571,
-        "symbol_hit_at_5": 0.2,
-        "mrr": 0.16047619047619047,
-        "latency_p50_ms": 9.511185009614564
+        "hit_at_5": 0.22857142857142856,
+        "symbol_hit_at_5": 0.22857142857142856,
+        "mrr": 0.21428571428571427,
+        "latency_p50_ms": 1271.4246880000246
       },
       "fastapi": {
         "count": 35,
-        "hit_at_5": 0.4,
-        "symbol_hit_at_5": 0.22857142857142856,
-        "mrr": 0.24674603174603174,
-        "latency_p50_ms": 13.152573010302149
+        "hit_at_5": 0.2857142857142857,
+        "symbol_hit_at_5": 0.2,
+        "mrr": 0.2576190476190476,
+        "latency_p50_ms": 1240.8025930000122
       },
       "flask": {
         "count": 35,
-        "hit_at_5": 0.6,
+        "hit_at_5": 0.5714285714285714,
         "symbol_hit_at_5": 0.45714285714285713,
-        "mrr": 0.4834467120181406,
-        "latency_p50_ms": 9.86717599153053
+        "mrr": 0.5123809523809524,
+        "latency_p50_ms": 1276.858921999974
       }
     },
     "naive-rag": {
@@ -813,21 +813,21 @@
         "hit_at_5": 0.2,
         "symbol_hit_at_5": 0.3142857142857143,
         "mrr": 0.11074829931972789,
-        "latency_p50_ms": 1.829503002227284
+        "latency_p50_ms": 1.859441000078732
       },
       "fastapi": {
         "count": 35,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.02857142857142857,
         "mrr": 0.0,
-        "latency_p50_ms": 1.8263009988004342
+        "latency_p50_ms": 1.8717069999638625
       },
       "flask": {
         "count": 35,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.05714285714285714,
         "mrr": 0.0,
-        "latency_p50_ms": 1.8303519900655374
+        "latency_p50_ms": 1.8807220001235692
       }
     },
     "cocoindex-code": {
@@ -836,21 +836,21 @@
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.0,
-        "latency_p50_ms": 245.5520980001893
+        "latency_p50_ms": 327.7731230000427
       },
       "fastapi": {
         "count": 35,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.0,
-        "latency_p50_ms": 281.8845739966491
+        "latency_p50_ms": 237.47228299998824
       },
       "flask": {
         "count": 35,
         "hit_at_5": 0.4857142857142857,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.29808390022675735,
-        "latency_p50_ms": 326.41500199679285
+        "latency_p50_ms": 321.3940990001447
       }
     },
     "grep-glob": {
@@ -859,21 +859,21 @@
         "hit_at_5": 0.6571428571428571,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.38285714285714284,
-        "latency_p50_ms": 11.212030003662221
+        "latency_p50_ms": 8.51442400016822
       },
       "fastapi": {
         "count": 35,
         "hit_at_5": 0.45714285714285713,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.26803854875283445,
-        "latency_p50_ms": 30.06409198860638
+        "latency_p50_ms": 21.824043999913556
       },
       "flask": {
         "count": 35,
         "hit_at_5": 0.5428571428571428,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.36748299319727884,
-        "latency_p50_ms": 12.199595003039576
+        "latency_p50_ms": 8.027919999904043
       }
     },
     "bm25": {
@@ -882,34 +882,34 @@
         "hit_at_5": 0.17142857142857143,
         "symbol_hit_at_5": 0.02857142857142857,
         "mrr": 0.10979591836734694,
-        "latency_p50_ms": 1.2578830064740032
+        "latency_p50_ms": 1.1262539999279397
       },
       "fastapi": {
         "count": 35,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.0,
-        "latency_p50_ms": 1.2309200101299211
+        "latency_p50_ms": 1.093464999939897
       },
       "flask": {
         "count": 35,
         "hit_at_5": 0.0,
         "symbol_hit_at_5": 0.0,
         "mrr": 0.0,
-        "latency_p50_ms": 1.9107999978587031
+        "latency_p50_ms": 1.1809669999820471
       }
     }
   },
   "reproducibility": {
     "coefficient_of_variation": {
       "nova-rag": {
-        "cv_hit_at_1": 0.0,
-        "cv_hit_at_3": 0.0,
-        "cv_hit_at_5": 0.0,
-        "cv_hit_at_10": 0.0,
+        "cv_hit_at_1": 0.0152,
+        "cv_hit_at_3": 0.0126,
+        "cv_hit_at_5": 0.024,
+        "cv_hit_at_10": 0.0189,
         "cv_symbol_hit_at_5": 0.0,
-        "cv_mrr": 0.0,
-        "cv_composite_score": 0.0004
+        "cv_mrr": 0.0157,
+        "cv_composite_score": 0.0073
       },
       "naive-rag": {
         "cv_hit_at_1": 0.0,
@@ -927,7 +927,7 @@
         "cv_hit_at_10": 0.0,
         "cv_symbol_hit_at_5": 0.0,
         "cv_mrr": 0.0,
-        "cv_composite_score": 0.021
+        "cv_composite_score": 0.0018
       },
       "grep-glob": {
         "cv_hit_at_1": 0.0,
@@ -936,7 +936,7 @@
         "cv_hit_at_10": 0.0,
         "cv_symbol_hit_at_5": 0.0,
         "cv_mrr": 0.0,
-        "cv_composite_score": 0.0011
+        "cv_composite_score": 0.0002
       },
       "bm25": {
         "cv_hit_at_1": 0.0,
@@ -945,7 +945,7 @@
         "cv_hit_at_10": 0.0,
         "cv_symbol_hit_at_5": 0.0,
         "cv_mrr": 0.0,
-        "cv_composite_score": 0.0002
+        "cv_composite_score": 0.0
       }
     },
     "note": "CV < 0.05 across replicates required for VAL-COMPARE-010"
@@ -1319,10 +1319,12 @@
       },
       "fastapi_010": {
         "expected_count": 1,
-        "found_count": 1,
-        "coverage_pct": 100.0,
-        "covered": true,
-        "missing": []
+        "found_count": 0,
+        "coverage_pct": 0.0,
+        "covered": false,
+        "missing": [
+          "fastapi/applications.py"
+        ]
       },
       "fastapi_011": {
         "expected_count": 2,
@@ -1385,10 +1387,12 @@
       },
       "fastapi_018": {
         "expected_count": 1,
-        "found_count": 1,
-        "coverage_pct": 100.0,
-        "covered": true,
-        "missing": []
+        "found_count": 0,
+        "coverage_pct": 0.0,
+        "covered": false,
+        "missing": [
+          "fastapi/dependencies/utils.py"
+        ]
       },
       "fastapi_019": {
         "expected_count": 2,
@@ -1471,10 +1475,12 @@
       },
       "fastapi_029": {
         "expected_count": 1,
-        "found_count": 1,
-        "coverage_pct": 100.0,
-        "covered": true,
-        "missing": []
+        "found_count": 0,
+        "coverage_pct": 0.0,
+        "covered": false,
+        "missing": [
+          "fastapi/routing.py"
+        ]
       },
       "fastapi_030": {
         "expected_count": 1,
@@ -1485,11 +1491,10 @@
       },
       "fastapi_031": {
         "expected_count": 5,
-        "found_count": 1,
-        "coverage_pct": 20.0,
+        "found_count": 2,
+        "coverage_pct": 40.0,
         "covered": false,
         "missing": [
-          "fastapi/dependencies/utils.py",
           "fastapi/dependencies/models.py",
           "fastapi/params.py",
           "fastapi/utils.py"
@@ -1770,11 +1775,10 @@
       },
       "flask_032": {
         "expected_count": 5,
-        "found_count": 2,
-        "coverage_pct": 40.0,
+        "found_count": 3,
+        "coverage_pct": 60.0,
         "covered": false,
         "missing": [
-          "src/flask/sansio/scaffold.py",
           "src/flask/sansio/blueprints.py",
           "src/flask/wrappers.py"
         ]
@@ -1805,10 +1809,10 @@
     },
     "summary": {
       "total_queries": 105,
-      "queries_fully_covered": 61,
+      "queries_fully_covered": 58,
       "total_expected_files": 193,
-      "total_found_files": 123,
-      "overall_coverage_pct": 63.7
+      "total_found_files": 122,
+      "overall_coverage_pct": 63.2
     }
   }
 }
