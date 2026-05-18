@@ -144,19 +144,19 @@
                 <th>#</th>
                 <th>Server</th>
                 <th>User</th>
-                <th data-sort="hit_at_1">Hit@1</th>
-                <th data-sort="hit_at_5">Hit@5</th>
-                <th data-sort="symbol_hit_at_5">Sym@5</th>
+                <th data-sort="hit_at_1" title="Fraction of queries where the correct file was the #1 result returned by the search engine — higher is better">Hit@1</th>
+                <th data-sort="hit_at_5" title="Fraction of queries where the correct file was in the top 5 results returned by the search engine — higher is better">Hit@5</th>
+                <th data-sort="symbol_hit_at_5" title="Fraction of queries where the correct code symbol (function or class name) was found in the top 5 results">Sym@5</th>
                 <th data-sort="chunk_hit_at_5" title="Chunk Hit@5 &mdash; fraction of queries where the correct code chunk (function/class body) was found in the top 5 results">Chunk@5</th>
-                <th data-sort="mrr">MRR</th>
-                <th data-sort="query_latency_p50_ms">p50 ms</th>
-                <th data-sort="query_latency_p95_ms">p95 ms</th>
-                <th data-sort="ingest_total_sec">Ingest</th>
-                <th data-sort="ram_peak_mb">RAM</th>
-                <th data-sort="composite_score">Score</th>
-                <th data-sort="avg_response_tokens">Avg Tokens</th>
-                <th data-sort="p95_response_tokens">P95 Tokens</th>
-                <th data-sort="avg_llm_tokens">Avg LLM Tokens</th>
+                <th data-sort="mrr" title="Mean Reciprocal Rank — average of 1 divided by the rank of the first correct result across all queries, higher values mean earlier hits">MRR</th>
+                <th data-sort="query_latency_p50_ms" title="Median query latency in milliseconds — 50% of all queries were faster than this response time">p50 ms</th>
+                <th data-sort="query_latency_p95_ms" title="95th percentile query latency in milliseconds — 95% of all queries completed faster than this response time">p95 ms</th>
+                <th data-sort="ingest_total_sec" title="Total time in seconds to clone and index the entire repository before running any benchmark queries">Ingest</th>
+                <th data-sort="ram_peak_mb" title="Peak resident memory usage in megabytes during query execution across all benchmark queries">RAM</th>
+                <th data-sort="composite_score" title="Composite score from 0 to 1 combining retrieval quality, query speed, and resource efficiency into a single rank">Score</th>
+                <th data-sort="avg_response_tokens" title="Average number of output tokens returned by the MCP server per query across all benchmark queries">Avg Tokens</th>
+                <th data-sort="p95_response_tokens" title="95th percentile of output tokens — 95% of queries returned fewer tokens than this count">P95 Tokens</th>
+                <th data-sort="avg_llm_tokens" title="Average number of tokens consumed by the underlying language model when generating responses for each query">Avg LLM Tokens</th>
             </tr>
         </thead>
         <tbody id="tbody"></tbody>

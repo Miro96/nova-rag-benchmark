@@ -918,6 +918,131 @@ class TestHtmlTokenColumns:
         assert "P95 Tokens" in html
 
 
+class TestHtmlTooltips:
+    """VAL-UI-001, VAL-UI-002: Every sortable column header has an informative tooltip."""
+
+    _SORTABLE_COLUMNS = [
+        "hit_at_1", "hit_at_5", "symbol_hit_at_5", "chunk_hit_at_5",
+        "mrr", "query_latency_p50_ms", "query_latency_p95_ms",
+        "ingest_total_sec", "ram_peak_mb", "composite_score",
+        "avg_response_tokens", "p95_response_tokens", "avg_llm_tokens",
+    ]
+
+    def test_every_sortable_th_has_title(self, test_client):
+        """VAL-UI-001: Every <th data-sort='...'> has a non-empty title attribute."""
+        import re
+
+        response = test_client.get("/")
+        assert response.status_code == 200
+        html = response.text
+
+        # Find all <th ...> elements with data-sort="X"
+        th_pattern = re.compile(
+            r'<th\b[^>]*\bdata-sort\s*=\s*"([^"]*)"[^>]*>', re.IGNORECASE
+        )
+        matches = th_pattern.findall(html)
+        sort_keys = set(matches)
+
+        # Check every expected column is present
+        for col in self._SORTABLE_COLUMNS:
+            assert col in sort_keys, (
+                f"Expected sortable column '{col}' not found in HTML"
+            )
+
+        # Check every <th data-sort='...'> has a title attribute
+        th_with_title = re.compile(
+            r'<th\b[^>]*\bdata-sort\s*=\s*"[^"]*"[^>]*\btitle\s*=\s*"([^"]*)"[^>]*>',
+            re.IGNORECASE,
+        )
+        titled = th_with_title.findall(html)
+        # Each titled match should have at least one word
+        assert len(titled) == len(matches), (
+            f"All {len(matches)} sortable columns must have a title attribute; "
+            f"found {len(titled)}"
+        )
+
+        for title_text in titled:
+            # Non-empty
+            assert title_text.strip(), (
+                f"Tooltip title must not be empty"
+            )
+            # At least 10 words
+            word_count = len(title_text.split())
+            assert word_count >= 10, (
+                f"Tooltip must have at least 10 words, got {word_count}: '{title_text}'"
+            )
+
+    def test_hit_at_5_tooltip_mentions_correct_phrases(self, test_client):
+        """VAL-UI-002: Hit@5 tooltip mentions 'fraction of queries' and 'top 5'."""
+        import re
+
+        response = test_client.get("/")
+        assert response.status_code == 200
+        html = response.text
+
+        # Extract the title for the hit_at_5 column
+        pattern = re.compile(
+            r'<th\b[^>]*\bdata-sort\s*=\s*"hit_at_5"[^>]*\btitle\s*=\s*"([^"]*)"[^>]*>',
+            re.IGNORECASE,
+        )
+        match = pattern.search(html)
+        assert match, "Hit@5 column must have a title attribute"
+        title_text = match.group(1).lower()
+        assert "fraction of queries" in title_text, (
+            f"Hit@5 tooltip should mention 'fraction of queries': '{match.group(1)}'"
+        )
+        assert "top 5" in title_text, (
+            f"Hit@5 tooltip should mention 'top 5': '{match.group(1)}'"
+        )
+
+    def test_mrr_tooltip_mentions_mean_reciprocal_rank(self, test_client):
+        """VAL-UI-002: MRR tooltip mentions 'Mean Reciprocal Rank'."""
+        import re
+
+        response = test_client.get("/")
+        assert response.status_code == 200
+        html = response.text
+
+        pattern = re.compile(
+            r'<th\b[^>]*\bdata-sort\s*=\s*"mrr"[^>]*\btitle\s*=\s*"([^"]*)"[^>]*>',
+            re.IGNORECASE,
+        )
+        match = pattern.search(html)
+        assert match, "MRR column must have a title attribute"
+        title_text = match.group(1).lower()
+        assert "mean reciprocal rank" in title_text, (
+            f"MRR tooltip should mention 'Mean Reciprocal Rank': '{match.group(1)}'"
+        )
+
+    def test_all_columns_have_distinct_tooltips(self, test_client):
+        """Each sortable column has a unique, distinct tooltip."""
+        import re
+
+        response = test_client.get("/")
+        assert response.status_code == 200
+        html = response.text
+
+        # Extract (data-sort, title) pairs
+        pattern = re.compile(
+            r'<th\b[^>]*\bdata-sort\s*=\s*"([^"]*)"[^>]*\btitle\s*=\s*"([^"]*)"[^>]*>',
+            re.IGNORECASE,
+        )
+        pairs = pattern.findall(html)
+
+        titles_by_sort = {}
+        for sort_key, title_text in pairs:
+            titles_by_sort[sort_key] = title_text
+
+        # All titles should be unique (no two columns share the same title)
+        seen_titles = set()
+        for sort_key, title_text in titles_by_sort.items():
+            normalized = title_text.strip().lower()
+            assert normalized not in seen_titles, (
+                f"Duplicate tooltip for '{sort_key}': '{title_text}'"
+            )
+            seen_titles.add(normalized)
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
