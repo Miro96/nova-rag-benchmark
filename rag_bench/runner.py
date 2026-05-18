@@ -32,6 +32,7 @@ from rag_bench.metrics import (
     QueryResult,
     compute_iqr,
     compute_metrics,
+    content_matches,
     directory_size_mb,
     file_matches,
     symbol_matches,
@@ -538,6 +539,7 @@ async def _run_query_pass(
 
             returned_files = [r.file_path for r in search_results]
             returned_symbols = [r.symbol for r in search_results if r.symbol]
+            returned_contents = [sr.content for sr in search_results]
 
             qr = QueryResult(
                 query_id=q.id,
@@ -552,6 +554,8 @@ async def _run_query_pass(
                 tool_calls=client.call_count - calls_before,
                 repo=q.repo,
                 response_tokens=response_tokens,
+                returned_contents=returned_contents,
+                expected_content=q.expected_content,
             )
 
             qr.found_file = any(
@@ -562,6 +566,11 @@ async def _run_query_pass(
                 symbol_matches(returned_symbols[:5], exp)
                 for exp in q.expected_symbols
             ) if q.expected_symbols else False
+
+            qr.found_chunk = any(
+                content_matches(qr.returned_contents, exp)
+                for exp in q.expected_content
+            ) if q.expected_content else False
 
             results.append(qr)
 
@@ -640,6 +649,7 @@ _MEDIAN_FIELDS: tuple[str, ...] = (
     "hit_at_10",
     "symbol_hit_at_5",
     "mrr",
+    "chunk_hit_at_5",
     "query_latency_p50_ms",
     "query_latency_p95_ms",
     "query_latency_p99_ms",
@@ -694,6 +704,7 @@ def _replicate_summary(reps: list[BenchmarkMetrics]) -> list[dict]:
             "hit_at_10": round(m.hit_at_10, 4),
             "symbol_hit_at_5": round(m.symbol_hit_at_5, 4),
             "mrr": round(m.mrr, 4),
+            "chunk_hit_at_5": round(m.chunk_hit_at_5, 4),
             "latency_p50_ms": round(m.query_latency_p50_ms, 1),
             "latency_p95_ms": round(m.query_latency_p95_ms, 1),
             "latency_p99_ms": round(m.query_latency_p99_ms, 1),
@@ -710,6 +721,7 @@ def _replicate_iqr(reps: list[BenchmarkMetrics]) -> dict[str, float]:
         "hit_at_5": round(compute_iqr([r.hit_at_5 for r in reps]), 4),
         "symbol_hit_at_5": round(compute_iqr([r.symbol_hit_at_5 for r in reps]), 4),
         "mrr": round(compute_iqr([r.mrr for r in reps]), 4),
+        "chunk_hit_at_5": round(compute_iqr([r.chunk_hit_at_5 for r in reps]), 4),
         "latency_p50_ms": round(compute_iqr([r.query_latency_p50_ms for r in reps]), 1),
         "latency_p95_ms": round(compute_iqr([r.query_latency_p95_ms for r in reps]), 1),
         "latency_mean_ms": round(compute_iqr([r.query_latency_mean_ms for r in reps]), 1),
@@ -830,6 +842,7 @@ def _build_result_json(
             "hit_at_5": round(metrics.hit_at_5, 4),
             "hit_at_10": round(metrics.hit_at_10, 4),
             "symbol_hit_at_5": round(metrics.symbol_hit_at_5, 4),
+            "chunk_hit_at_5": round(metrics.chunk_hit_at_5, 4),
             "mrr": round(metrics.mrr, 4),
             "latency": {
                 "p50_ms": round(metrics.query_latency_p50_ms, 1),
@@ -896,12 +909,15 @@ def _query_detail(qr: QueryResult) -> dict:
         "repo": qr.repo,
         "found_file": qr.found_file,
         "found_symbol": qr.found_symbol,
+        "found_chunk": qr.found_chunk,
         "latency_ms": round(qr.latency_ms, 1),
         "tool_calls": qr.tool_calls,
         "returned_files": qr.returned_files[:5],
         "returned_symbols": [s for s in qr.returned_symbols[:5] if s],
+        "returned_contents": qr.returned_contents[:5],
         "expected_files": qr.expected_files,
         "expected_symbols": qr.expected_symbols,
+        "expected_content": qr.expected_content,
         "response_tokens": qr.response_tokens,
     }
     if qr.error:

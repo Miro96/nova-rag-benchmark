@@ -363,6 +363,173 @@ class TestEmptyTokenDataGraceful:
             pytest.fail(f"print_results_table raised on None token fields: {e}")
 
 
+# ============================================================================
+# Chunk Hit@5 in terminal output
+# ============================================================================
+
+
+class TestResultsTableChunkHitAt5:
+    """VAL-RUNNER-003 terminal output: results table includes Chunk Hit@5 row."""
+
+    def test_chunk_hit_at_5_row_present(self):
+        """Retrieval Quality table includes 'Chunk Hit@5' row."""
+        m = _make_metrics(chunk_hit_at_5=0.35)
+        out = _capture_print_results_table("test", m)
+        assert "Chunk Hit@5" in out, (
+            f"Expected 'Chunk Hit@5' row in output, got:\n{out[:500]}"
+        )
+        assert "35.0%" in out, (
+            f"Expected 35.0% for chunk_hit_at_5=0.35, got:\n{out[:500]}"
+        )
+
+    def test_chunk_hit_at_5_zero_renders(self):
+        """Chunk Hit@5 row renders even when value is 0.0."""
+        m = _make_metrics(chunk_hit_at_5=0.0)
+        out = _capture_print_results_table("test", m)
+        assert "Chunk Hit@5" in out
+        assert "0.0%" in out
+
+    def test_chunk_hit_at_5_one_renders(self):
+        """Chunk Hit@5 row renders when value is 1.0."""
+        m = _make_metrics(chunk_hit_at_5=1.0)
+        out = _capture_print_results_table("test", m)
+        assert "Chunk Hit@5" in out
+        assert "100.0%" in out
+
+
+class TestComparisonTableChunkHitAt5:
+    """VAL-RUNNER-005 terminal output: comparison table includes Chunk Hit@5 row."""
+
+    def test_chunk_hit_at_5_row_present_in_comparison(self):
+        """Comparison table includes 'Chunk Hit@5' row."""
+        results = [
+            {
+                "server": {"name": "nova-rag"},
+                "retrieval": {
+                    "hit_at_1": 0.5,
+                    "hit_at_5": 0.65,
+                    "symbol_hit_at_5": 0.3,
+                    "chunk_hit_at_5": 0.42,
+                    "mrr": 0.55,
+                    "latency": {"p50_ms": 20.0, "p95_ms": 35.0},
+                },
+                "ingest": {"total_sec": 5.0, "files_per_sec": 20.0, "ram_peak_mb": 200.0},
+                "composite_score": 0.72,
+            },
+        ]
+        out = _capture_print_comparison_table(results)
+        assert "Chunk Hit@5" in out, (
+            f"Expected 'Chunk Hit@5' in comparison output, got:\n{out[:500]}"
+        )
+        assert "42.0%" in out, (
+            f"Expected 42.0% for chunk_hit_at_5=0.42, got:\n{out[:500]}"
+        )
+
+    def test_chunk_hit_at_5_missing_from_result_uses_zero(self):
+        """When chunk_hit_at_5 is missing, comparison shows 0.0%."""
+        results = [
+            {
+                "server": {"name": "legacy"},
+                "retrieval": {
+                    "hit_at_1": 0.5,
+                    "hit_at_5": 0.65,
+                    "symbol_hit_at_5": 0.3,
+                    # chunk_hit_at_5 intentionally missing
+                    "mrr": 0.55,
+                    "latency": {"p50_ms": 20.0, "p95_ms": 35.0},
+                },
+                "ingest": {"total_sec": 5.0, "files_per_sec": 20.0, "ram_peak_mb": 200.0},
+                "composite_score": 0.72,
+            },
+        ]
+        out = _capture_print_comparison_table(results)
+        assert "Chunk Hit@5" in out
+        # Should show 0.0% for missing chunk_hit_at_5
+        assert "0.0%" in out
+
+
+class TestComparisonReportChunkMetrics:
+    """VAL-RUNNER-005: generate_comparison_report includes chunk data."""
+
+    def test_chunk_in_per_preset_metrics(self):
+        from rag_bench.report import generate_comparison_report
+
+        results = [
+            {
+                "server": {"name": "test"},
+                "retrieval": {
+                    "hit_at_1": 0.5, "hit_at_3": 0.6, "hit_at_5": 0.65,
+                    "hit_at_10": 0.7, "symbol_hit_at_5": 0.3,
+                    "chunk_hit_at_5": 0.42,
+                    "mrr": 0.55, "total_queries": 100, "total_hits": 65,
+                    "latency": {"p50_ms": 20.0, "p95_ms": 35.0, "p99_ms": 50.0, "mean_ms": 25.0},
+                },
+                "ingest": {"total_files": 200, "total_sec": 10.0, "files_per_sec": 20.0,
+                           "index_size_mb": 15.0, "ram_peak_mb": 200.0},
+                "composite_score": 0.72,
+                "replicates": [],
+                "query_details": [],
+            },
+        ]
+        report = generate_comparison_report(results, replicates=1)
+        assert "metrics" in report
+        assert "test" in report["metrics"]
+        assert "chunk_hit_at_5" in report["metrics"]["test"]
+        assert report["metrics"]["test"]["chunk_hit_at_5"] == 0.42
+
+    def test_chunk_in_summary_rows(self):
+        from rag_bench.report import generate_comparison_report
+
+        results = [
+            {
+                "server": {"name": "test"},
+                "retrieval": {
+                    "hit_at_1": 0.5, "hit_at_3": 0.6, "hit_at_5": 0.65,
+                    "hit_at_10": 0.7, "symbol_hit_at_5": 0.3,
+                    "chunk_hit_at_5": 0.42,
+                    "mrr": 0.55, "total_queries": 100, "total_hits": 65,
+                    "latency": {"p50_ms": 20.0, "p95_ms": 35.0, "p99_ms": 50.0, "mean_ms": 25.0},
+                },
+                "ingest": {"total_files": 200, "total_sec": 10.0, "files_per_sec": 20.0,
+                           "index_size_mb": 15.0, "ram_peak_mb": 200.0},
+                "composite_score": 0.72,
+                "replicates": [],
+                "query_details": [],
+            },
+        ]
+        report = generate_comparison_report(results, replicates=1)
+        summary_rows = report["summary"]
+        chunk_row = [r for r in summary_rows if r["metric"] == "Chunk Hit@5"]
+        assert len(chunk_row) == 1, f"Expected 'Chunk Hit@5' in summary rows, got: {[r['metric'] for r in summary_rows]}"
+        assert chunk_row[0]["test"] == 0.42
+
+    def test_chunk_default_when_missing(self):
+        from rag_bench.report import generate_comparison_report
+
+        results = [
+            {
+                "server": {"name": "legacy"},
+                "retrieval": {
+                    "hit_at_1": 0.5, "hit_at_3": 0.6, "hit_at_5": 0.65,
+                    "hit_at_10": 0.7, "symbol_hit_at_5": 0.3,
+                    # chunk_hit_at_5 intentionally missing
+                    "mrr": 0.55, "total_queries": 100, "total_hits": 65,
+                    "latency": {"p50_ms": 20.0, "p95_ms": 35.0, "p99_ms": 50.0, "mean_ms": 25.0},
+                },
+                "ingest": {"total_files": 200, "total_sec": 10.0, "files_per_sec": 20.0,
+                           "index_size_mb": 15.0, "ram_peak_mb": 200.0},
+                "composite_score": 0.72,
+                "replicates": [],
+                "query_details": [],
+            },
+        ]
+        report = generate_comparison_report(results, replicates=1)
+        assert report["metrics"]["legacy"]["chunk_hit_at_5"] == 0.0
+        chunk_row = [r for r in report["summary"] if r["metric"] == "Chunk Hit@5"]
+        assert len(chunk_row) == 1
+        assert chunk_row[0]["legacy"] == 0.0
+
+
 # ---------------------------------------------------------------------------
 # _fmt_tokens helper tests
 # ---------------------------------------------------------------------------

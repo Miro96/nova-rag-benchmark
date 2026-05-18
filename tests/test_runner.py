@@ -532,3 +532,237 @@ class TestRunBenchmarkSignature:
         assert params["tokenizer_name"].default == "tiktoken"
         assert params["token_encoding"].default is None
         assert params["include_tokens_in_score"].default is False
+
+
+# ============================================================================
+# Chunk runner integration tests
+# ============================================================================
+
+
+class TestQueryDetailChunkFields:
+    """VAL-RUNNER-001, VAL-RUNNER-004: _query_detail includes chunk fields."""
+
+    def test_query_detail_includes_returned_contents(self):
+        from rag_bench.metrics import QueryResult
+        from rag_bench.runner import _query_detail
+
+        qr = QueryResult(
+            query_id="test_001",
+            query_text="test query",
+            query_type="locate",
+            difficulty="easy",
+            expected_files=["test.py"],
+            expected_symbols=[],
+            returned_files=["test.py"],
+            returned_symbols=[],
+            latency_ms=50.0,
+            tool_calls=2,
+            repo="flask",
+            returned_contents=["def foo(): pass", "class Bar:"],
+        )
+        detail = _query_detail(qr)
+        assert "returned_contents" in detail
+        assert detail["returned_contents"] == ["def foo(): pass", "class Bar:"]
+        assert "found_chunk" in detail
+        assert detail["found_chunk"] is False
+
+    def test_query_detail_includes_found_chunk_true(self):
+        from rag_bench.metrics import QueryResult
+        from rag_bench.runner import _query_detail
+
+        qr = QueryResult(
+            query_id="test_001",
+            query_text="test query",
+            query_type="locate",
+            difficulty="easy",
+            expected_files=["test.py"],
+            expected_symbols=[],
+            returned_files=["test.py"],
+            returned_symbols=[],
+            latency_ms=50.0,
+            tool_calls=2,
+            repo="flask",
+            returned_contents=["def handle_request(req):"],
+            found_chunk=True,
+            expected_content=["def handle_request"],
+        )
+        detail = _query_detail(qr)
+        assert detail["found_chunk"] is True
+        assert "expected_content" in detail
+        assert detail["expected_content"] == ["def handle_request"]
+
+    def test_query_detail_returned_contents_capped_at_5(self):
+        from rag_bench.metrics import QueryResult
+        from rag_bench.runner import _query_detail
+
+        qr = QueryResult(
+            query_id="test_001",
+            query_text="test query",
+            query_type="locate",
+            difficulty="easy",
+            expected_files=["test.py"],
+            expected_symbols=[],
+            returned_files=["test.py"],
+            returned_symbols=[],
+            latency_ms=50.0,
+            tool_calls=2,
+            repo="flask",
+            returned_contents=[f"chunk_{i}" for i in range(10)],
+        )
+        detail = _query_detail(qr)
+        assert len(detail["returned_contents"]) == 5
+        assert detail["returned_contents"] == ["chunk_0", "chunk_1", "chunk_2", "chunk_3", "chunk_4"]
+
+    def test_query_detail_error_preserves_chunk_fields(self):
+        from rag_bench.metrics import QueryResult
+        from rag_bench.runner import _query_detail
+
+        qr = QueryResult(
+            query_id="test_001",
+            query_text="test query",
+            query_type="locate",
+            difficulty="easy",
+            expected_files=["test.py"],
+            expected_symbols=[],
+            returned_files=[],
+            returned_symbols=[],
+            latency_ms=0,
+            tool_calls=0,
+            repo="flask",
+            error="timeout",
+            returned_contents=[],
+            found_chunk=False,
+        )
+        detail = _query_detail(qr)
+        assert "error" in detail
+        assert "returned_contents" in detail
+        assert "found_chunk" in detail
+        assert detail["found_chunk"] is False
+
+
+class TestBuildResultJsonChunkFields:
+    """VAL-RUNNER-003: _build_result_json includes chunk_hit_at_5."""
+
+    def test_retrieval_includes_chunk_hit_at_5(self):
+        from rag_bench.metrics import BenchmarkMetrics, QueryResult
+        from rag_bench.runner import _build_result_json
+
+        metrics = BenchmarkMetrics(
+            chunk_hit_at_5=0.42,
+        )
+        result = _build_result_json(
+            run_id="test-run",
+            server_config={"name": "test"},
+            metrics=metrics,
+            query_results=[],
+            repos=[],
+            replicate_metrics=[metrics],
+            startup_ms=100.0,
+            detected_tools={},
+        )
+        assert "chunk_hit_at_5" in result["retrieval"]
+        assert result["retrieval"]["chunk_hit_at_5"] == 0.42
+
+    def test_retrieval_chunk_hit_at_5_default_is_zero(self):
+        from rag_bench.metrics import BenchmarkMetrics
+        from rag_bench.runner import _build_result_json
+
+        metrics = BenchmarkMetrics()
+        result = _build_result_json(
+            run_id="test-run",
+            server_config={"name": "test"},
+            metrics=metrics,
+            query_results=[],
+            repos=[],
+            replicate_metrics=[metrics],
+            startup_ms=100.0,
+            detected_tools={},
+        )
+        assert result["retrieval"]["chunk_hit_at_5"] == 0.0
+
+    def test_chunk_hit_at_5_in_retrieval_is_float(self):
+        from rag_bench.metrics import BenchmarkMetrics
+        from rag_bench.runner import _build_result_json
+
+        metrics = BenchmarkMetrics(chunk_hit_at_5=0.5)
+        result = _build_result_json(
+            run_id="test-run",
+            server_config={"name": "test"},
+            metrics=metrics,
+            query_results=[],
+            repos=[],
+            replicate_metrics=[metrics],
+            startup_ms=100.0,
+            detected_tools={},
+        )
+        assert isinstance(result["retrieval"]["chunk_hit_at_5"], float)
+        assert 0.0 <= result["retrieval"]["chunk_hit_at_5"] <= 1.0
+
+
+class TestMedianFieldsChunk:
+    """Test that chunk_hit_at_5 is in _MEDIAN_FIELDS."""
+
+    def test_median_fields_includes_chunk_hit_at_5(self):
+        from rag_bench.runner import _MEDIAN_FIELDS
+        assert "chunk_hit_at_5" in _MEDIAN_FIELDS
+
+
+class TestReplicateSummaryChunk:
+    """Test that _replicate_summary includes chunk_hit_at_5."""
+
+    def test_replicate_summary_includes_chunk_hit_at_5(self):
+        from rag_bench.metrics import BenchmarkMetrics
+        from rag_bench.runner import _replicate_summary
+
+        m = BenchmarkMetrics(chunk_hit_at_5=0.35)
+        summary = _replicate_summary([m])
+        assert len(summary) == 1
+        assert "chunk_hit_at_5" in summary[0]
+        assert summary[0]["chunk_hit_at_5"] == 0.35
+
+
+class TestReplicateIqrChunk:
+    """Test that _replicate_iqr includes chunk_hit_at_5."""
+
+    def test_replicate_iqr_includes_chunk_hit_at_5(self):
+        from rag_bench.metrics import BenchmarkMetrics
+        from rag_bench.runner import _replicate_iqr
+
+        reps = [
+            BenchmarkMetrics(chunk_hit_at_5=0.3),
+            BenchmarkMetrics(chunk_hit_at_5=0.5),
+            BenchmarkMetrics(chunk_hit_at_5=0.4),
+        ]
+        iqr = _replicate_iqr(reps)
+        assert "chunk_hit_at_5" in iqr
+        assert isinstance(iqr["chunk_hit_at_5"], float)
+
+
+class TestFoundChunkComputation:
+    """VAL-RUNNER-002: found_chunk computed via content_matches."""
+
+    def test_found_chunk_true_when_content_matches(self):
+        from rag_bench.metrics import content_matches
+
+        returned = ["def handle_request(req: Request) -> Response:"]
+        expected = ["def handle_request"]
+        assert content_matches(returned, expected[0])
+
+    def test_found_chunk_false_when_no_match(self):
+        from rag_bench.metrics import content_matches
+
+        returned = ["def foo(): pass"]
+        expected = ["handle_request"]
+        assert not content_matches(returned, expected[0])
+
+    def test_found_chunk_false_when_expected_empty(self):
+        from rag_bench.metrics import content_matches
+
+        returned = ["some content"]
+        assert not content_matches(returned, "")
+
+    def test_found_chunk_false_when_returned_empty(self):
+        from rag_bench.metrics import content_matches
+
+        expected = "def handle_request"
+        assert not content_matches([], expected)

@@ -35,6 +35,7 @@ def print_results_table(server_name: str, m: BenchmarkMetrics,
     table.add_row("Hit@5", f"{m.hit_at_5:.1%}")
     table.add_row("Hit@10", f"{m.hit_at_10:.1%}")
     table.add_row("Symbol Hit@5", f"{m.symbol_hit_at_5:.1%}")
+    table.add_row("Chunk Hit@5", f"{m.chunk_hit_at_5:.1%}")
     table.add_row("MRR", f"{m.mrr:.4f}")
     console.print(table)
 
@@ -169,6 +170,7 @@ def print_comparison_table(results: list[dict]) -> None:
         ("Hit@1", lambda r: f"{r['retrieval']['hit_at_1']:.1%}"),
         ("Hit@5", lambda r: f"{r['retrieval']['hit_at_5']:.1%}"),
         ("Symbol Hit@5", lambda r: f"{r['retrieval']['symbol_hit_at_5']:.1%}"),
+        ("Chunk Hit@5", lambda r: f"{r['retrieval'].get('chunk_hit_at_5', 0):.1%}"),
         ("MRR", lambda r: f"{r['retrieval']['mrr']:.4f}"),
         ("Latency p50", lambda r: f"{r['retrieval']['latency']['p50_ms']:.0f} ms"),
         ("Latency p95", lambda r: f"{r['retrieval']['latency']['p95_ms']:.0f} ms"),
@@ -233,6 +235,7 @@ def generate_comparison_report(
             "hit_at_5": retrieval.get("hit_at_5"),
             "hit_at_10": retrieval.get("hit_at_10"),
             "symbol_hit_at_5": retrieval.get("symbol_hit_at_5"),
+            "chunk_hit_at_5": retrieval.get("chunk_hit_at_5", 0.0),
             "mrr": retrieval.get("mrr"),
             "map": round(retrieval.get("mrr", 0), 4),  # MAP approximated by MRR for now
             "latency_p50_ms": latency.get("p50_ms"),
@@ -327,6 +330,7 @@ def generate_comparison_report(
         ("Hit@5", "hit_at_5", ".1%"),
         ("Hit@10", "hit_at_10", ".1%"),
         ("Symbol Hit@5", "symbol_hit_at_5", ".1%"),
+        ("Chunk Hit@5", "chunk_hit_at_5", ".1%"),
         ("MRR", "mrr", ".4f"),
         ("MAP", "map", ".4f"),
         ("Latency p50 (ms)", "latency_p50_ms", ".0f"),
