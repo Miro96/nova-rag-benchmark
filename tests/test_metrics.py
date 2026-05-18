@@ -12,12 +12,14 @@ from rag_bench.metrics import (
     MemorySampler,
     QueryResult,
     compute_composite_score,
+    compute_chunk_hit_at_k,
     compute_hit_at_k,
     compute_latency_stats,
     compute_metrics,
     compute_mrr,
     compute_percentile,
     compute_symbol_hit_at_k,
+    content_matches,
     directory_size_mb,
     file_matches,
     normalize_path,
@@ -1336,3 +1338,520 @@ class TestCompositeScoreTokenMonotonicity:
             index_size_mb=20.0,
         )
         assert 0.0 < score < 1.0
+
+
+# ============================================================================
+# Chunk matching: content_matches
+# ============================================================================
+
+
+class TestContentMatches:
+    """VAL-CHUNK-001 through VAL-CHUNK-005: content_matches logic."""
+
+    # -- VAL-CHUNK-001: returns True for contained substring -------------------
+
+    def test_contained_substring_returns_true(self):
+        assert content_matches(
+            ["def handle_request(req):", "class Router:"],
+            "def handle_request",
+        )
+
+    def test_substring_deep_in_list(self):
+        assert content_matches(
+            ["unrelated code", "some other chunk", "def handle_request(req)"],
+            "def handle_request",
+        )
+
+    # -- VAL-CHUNK-002: respects minimum length --------------------------------
+
+    def test_short_expected_accepted_by_default_min_overlap(self):
+        # Default min_overlap=0, so "x =" (3 chars) passes
+        assert content_matches(["x = y + z"], "x =")
+
+    def test_short_expected_rejected_with_explicit_min_overlap(self):
+        # len("x =") is 3, default min_overlap=0 → passes
+        assert content_matches(["x = y + z"], "x =")
+        # Explicit min_overlap=4 exceeds len → rejected
+        assert not content_matches(["x = y + z"], "x =", min_overlap=4)
+
+    def test_exactly_min_overlap_boundary(self):
+        s = "a" * 20  # exactly 20 chars
+        assert content_matches([s], s, min_overlap=20)
+        assert not content_matches([s], s, min_overlap=21)
+
+    # -- VAL-CHUNK-003: case-insensitive ---------------------------------------
+
+    def test_case_insensitive_match(self):
+        assert content_matches(
+            ["Def Handle_Request(req)"],
+            "def handle_request",
+        )
+
+    def test_case_insensitive_no_match(self):
+        assert not content_matches(
+            ["Def Handle_Request(req)"],
+            "completely different",
+        )
+
+    def test_returned_lowercase_expected_uppercase(self):
+        assert content_matches(
+            ["def handle_request(req)"],
+            "DEF HANDLE_REQUEST",
+        )
+
+    def test_both_mixed_case(self):
+        assert content_matches(
+            ["DeF hAnDlE_rEqUeSt(ReQ)"],
+            "dEf HaNdLe_ReQuEsT",
+        )
+
+    # -- VAL-CHUNK-004: returns False for non-matching content -----------------
+
+    def test_non_matching_returns_false(self):
+        assert not content_matches(["def foo(): pass"], "handle_request")
+
+    def test_multiple_returned_none_match(self):
+        assert not content_matches(
+            ["def foo(): pass", "class Bar:", "x = 1"],
+            "handle_request",
+        )
+
+    # -- VAL-CHUNK-005: handles empty input gracefully -------------------------
+
+    def test_empty_returned_contents_returns_false(self):
+        assert not content_matches([], "anything")
+
+    def test_empty_expected_returns_false(self):
+        assert not content_matches(["stuff"], "")
+
+    def test_both_empty_returns_false(self):
+        assert not content_matches([], "")
+
+    def test_empty_string_in_returned_list(self):
+        # An empty string in returned_contents shouldn't cause issues
+        assert not content_matches(["", "other"], "expected")
+
+    # -- Edge cases ------------------------------------------------------------
+
+    def test_expected_is_substring_of_returned(self):
+        # The expected text appears inside a larger returned content
+        assert content_matches(
+            ["def handle_request(req: Request) -> Response: ..."],
+            "handle_request(req",
+        )
+
+    def test_whitespace_sensitive_case_folded(self):
+        # Case-folding preserves whitespace; substring match is literal
+        assert content_matches(
+            ["  def handle_request(req):  "],
+            "def handle_request",
+        )
+
+    def test_multibyte_unicode(self):
+        # Non-ASCII characters should still work with casefold
+        assert content_matches(["Straße"], "straße")  # ß → ss in casefold
+        # "Straße".casefold() == "strasse", so this should match
+        assert content_matches(["Straße"], "strasse")
+
+    def test_empty_expected_with_default_min_overlap(self):
+        # Empty expected is shorter than min_overlap (20) → False
+        assert not content_matches(["stuff"], "")
+
+
+# ============================================================================
+# Chunk matching: compute_chunk_hit_at_k
+# ============================================================================
+
+
+class TestComputeChunkHitAtK:
+    """VAL-CHUNK-006 and VAL-CHUNK-007: chunk hit-at-k computation."""
+
+    def _make_qr_with_chunk(
+        self,
+        found_chunk: bool = False,
+        expected_content: list[str] | None = None,
+        returned_contents: list[str] | None = None,
+    ) -> QueryResult:
+        return QueryResult(
+            query_id="test",
+            query_text="test query",
+            query_type="locate",
+            difficulty="medium",
+            expected_files=["src/app.py"],
+            expected_symbols=["MyClass"],
+            returned_files=["src/app.py"],
+            returned_symbols=["MyClass"],
+            latency_ms=50.0,
+            found_chunk=found_chunk,
+            expected_content=expected_content or [],
+            returned_contents=returned_contents or [],
+        )
+
+    # -- VAL-CHUNK-006: computes fraction correctly ----------------------------
+
+    def test_three_of_five_found_chunk(self):
+        results = [
+            self._make_qr_with_chunk(found_chunk=True, expected_content=["def foo()"]),
+            self._make_qr_with_chunk(found_chunk=True, expected_content=["class Bar"]),
+            self._make_qr_with_chunk(found_chunk=True, expected_content=["def baz()"]),
+            self._make_qr_with_chunk(found_chunk=False, expected_content=["def qux()"]),
+            self._make_qr_with_chunk(found_chunk=False, expected_content=["def quux()"]),
+        ]
+        assert compute_chunk_hit_at_k(results, 5) == pytest.approx(0.6)
+
+    def test_all_found_chunk(self):
+        results = [
+            self._make_qr_with_chunk(found_chunk=True, expected_content=["def a()"]),
+            self._make_qr_with_chunk(found_chunk=True, expected_content=["def b()"]),
+            self._make_qr_with_chunk(found_chunk=True, expected_content=["def c()"]),
+        ]
+        assert compute_chunk_hit_at_k(results, 5) == pytest.approx(1.0)
+
+    def test_none_found_chunk(self):
+        results = [
+            self._make_qr_with_chunk(found_chunk=False, expected_content=["def a()"]),
+            self._make_qr_with_chunk(found_chunk=False, expected_content=["def b()"]),
+        ]
+        assert compute_chunk_hit_at_k(results, 5) == pytest.approx(0.0)
+
+    # -- VAL-CHUNK-007: no expected_content → 0.0 -----------------------------
+
+    def test_no_queries_with_expected_content_returns_zero(self):
+        results = [
+            self._make_qr_with_chunk(
+                found_chunk=False, expected_content=[],  # no expected_content
+            ),
+            self._make_qr_with_chunk(
+                found_chunk=False, expected_content=[],
+            ),
+            self._make_qr_with_chunk(
+                found_chunk=False, expected_content=[],
+            ),
+        ]
+        assert compute_chunk_hit_at_k(results, 5) == 0.0
+
+    def test_mixed_with_and_without_expected_content(self):
+        # 2 queries with expected_content (1 hit), 3 without → denominator = 2
+        results = [
+            self._make_qr_with_chunk(found_chunk=True, expected_content=["def a()"]),
+            self._make_qr_with_chunk(found_chunk=False, expected_content=["def b()"]),
+            self._make_qr_with_chunk(expected_content=[]),   # excluded
+            self._make_qr_with_chunk(expected_content=[]),   # excluded
+            self._make_qr_with_chunk(expected_content=[]),   # excluded
+        ]
+        assert compute_chunk_hit_at_k(results, 5) == pytest.approx(0.5)
+
+    # -- Edge cases ------------------------------------------------------------
+
+    def test_empty_results_returns_zero(self):
+        assert compute_chunk_hit_at_k([], 5) == 0.0
+
+    def test_k_zero_returns_zero(self):
+        results = [
+            self._make_qr_with_chunk(found_chunk=True, expected_content=["def a()"]),
+        ]
+        assert compute_chunk_hit_at_k(results, 0) == 0.0
+
+    def test_different_k_all_in_range(self):
+        # Same as other hit-at-k functions: results should be in [0, 1]
+        results = [
+            self._make_qr_with_chunk(found_chunk=True, expected_content=["def a()"]),
+            self._make_qr_with_chunk(found_chunk=True, expected_content=["def b()"]),
+            self._make_qr_with_chunk(found_chunk=False, expected_content=["def c()"]),
+        ]
+        for k in (1, 3, 5, 10):
+            v = compute_chunk_hit_at_k(results, k)
+            assert 0.0 <= v <= 1.0
+
+
+# ============================================================================
+# Chunk fields: QueryResult
+# ============================================================================
+
+
+class TestQueryResultChunkFields:
+    """VAL-METRIC-001: QueryResult has returned_contents and found_chunk."""
+
+    def test_returned_contents_defaults_to_empty_list(self):
+        qr = QueryResult(
+            query_id="q", query_text="", query_type="locate",
+            difficulty="easy", expected_files=[], expected_symbols=[],
+            returned_files=[], returned_symbols=[], latency_ms=1.0,
+        )
+        assert qr.returned_contents == []
+        assert isinstance(qr.returned_contents, list)
+
+    def test_returned_contents_settable(self):
+        qr = QueryResult(
+            query_id="q", query_text="", query_type="locate",
+            difficulty="easy", expected_files=[], expected_symbols=[],
+            returned_files=[], returned_symbols=[], latency_ms=1.0,
+            returned_contents=["def foo(): pass", "class Bar:"],
+        )
+        assert qr.returned_contents == ["def foo(): pass", "class Bar:"]
+
+    def test_found_chunk_defaults_to_false(self):
+        qr = QueryResult(
+            query_id="q", query_text="", query_type="locate",
+            difficulty="easy", expected_files=[], expected_symbols=[],
+            returned_files=[], returned_symbols=[], latency_ms=1.0,
+        )
+        assert qr.found_chunk is False
+
+    def test_found_chunk_settable(self):
+        qr = QueryResult(
+            query_id="q", query_text="", query_type="locate",
+            difficulty="easy", expected_files=[], expected_symbols=[],
+            returned_files=[], returned_symbols=[], latency_ms=1.0,
+            found_chunk=True,
+        )
+        assert qr.found_chunk is True
+
+    def test_expected_content_defaults_to_empty_list(self):
+        qr = QueryResult(
+            query_id="q", query_text="", query_type="locate",
+            difficulty="easy", expected_files=[], expected_symbols=[],
+            returned_files=[], returned_symbols=[], latency_ms=1.0,
+        )
+        assert qr.expected_content == []
+        assert isinstance(qr.expected_content, list)
+
+    def test_expected_content_settable(self):
+        qr = QueryResult(
+            query_id="q", query_text="", query_type="locate",
+            difficulty="easy", expected_files=[], expected_symbols=[],
+            returned_files=[], returned_symbols=[], latency_ms=1.0,
+            expected_content=["class Flask(", "def create_app("],
+        )
+        assert qr.expected_content == ["class Flask(", "def create_app("]
+
+
+# ============================================================================
+# Chunk field: BenchmarkMetrics
+# ============================================================================
+
+
+class TestBenchmarkMetricsChunkField:
+    """VAL-METRIC-002: BenchmarkMetrics has chunk_hit_at_5."""
+
+    def test_chunk_hit_at_5_defaults_to_zero(self):
+        m = BenchmarkMetrics()
+        assert m.chunk_hit_at_5 == 0.0
+
+    def test_chunk_hit_at_5_settable(self):
+        m = BenchmarkMetrics(chunk_hit_at_5=0.75)
+        assert m.chunk_hit_at_5 == 0.75
+
+
+# ============================================================================
+# compute_metrics: chunk integration
+# ============================================================================
+
+
+class TestComputeMetricsChunkIntegration:
+    """VAL-METRIC-003: compute_metrics populates chunk_hit_at_5."""
+
+    def _make_qr_with_chunk(
+        self,
+        found_chunk: bool = False,
+        expected_content: list[str] | None = None,
+        returned_contents: list[str] | None = None,
+    ) -> QueryResult:
+        return QueryResult(
+            query_id="test",
+            query_text="test query",
+            query_type="locate",
+            difficulty="medium",
+            expected_files=["src/app.py"],
+            expected_symbols=["MyClass"],
+            returned_files=["src/app.py"],
+            returned_symbols=["MyClass"],
+            latency_ms=50.0,
+            found_chunk=found_chunk,
+            expected_content=expected_content or [],
+            returned_contents=returned_contents or [],
+        )
+
+    def test_chunk_hit_at_5_computed_correctly(self):
+        results = [
+            self._make_qr_with_chunk(found_chunk=True, expected_content=["def a()"]),
+            self._make_qr_with_chunk(found_chunk=True, expected_content=["def b()"]),
+            self._make_qr_with_chunk(found_chunk=False, expected_content=["def c()"]),
+            self._make_qr_with_chunk(found_chunk=True, expected_content=["def d()"]),
+            self._make_qr_with_chunk(found_chunk=False, expected_content=["def e()"]),
+        ]
+        m = compute_metrics(results)
+        assert m.chunk_hit_at_5 == pytest.approx(0.6)
+
+    def test_chunk_hit_at_5_zero_when_no_expected_content(self):
+        results = [
+            self._make_qr_with_chunk(expected_content=[]),
+            self._make_qr_with_chunk(expected_content=[]),
+        ]
+        m = compute_metrics(results)
+        assert m.chunk_hit_at_5 == 0.0
+
+    def test_chunk_hit_at_5_in_range(self):
+        results = [
+            self._make_qr_with_chunk(found_chunk=True, expected_content=["def a()"]),
+            self._make_qr_with_chunk(found_chunk=False, expected_content=["def b()"]),
+        ]
+        m = compute_metrics(results)
+        assert 0.0 <= m.chunk_hit_at_5 <= 1.0
+
+
+# ============================================================================
+# Back-compat: existing metrics unchanged when chunk data absent
+# ============================================================================
+
+
+class TestExistingMetricsUnchangedByChunk:
+    """VAL-METRIC-004: existing metrics identical when chunk data absent."""
+
+    def test_hit_at_k_mrr_latency_unchanged_with_chunk_fields_default(self):
+        """When chunk fields are all default (empty), existing metrics unchanged."""
+        results = [
+            _make_qr(
+                returned_files=["src/app.py"],
+                expected_files=["src/app.py"],
+                returned_symbols=["MyClass"],
+                expected_symbols=["MyClass"],
+                latency_ms=100,
+            ),
+            _make_qr(
+                returned_files=["wrong.py"],
+                expected_files=["src/config.py"],
+                returned_symbols=["OtherClass"],
+                expected_symbols=["Config"],
+                latency_ms=200,
+            ),
+            _make_qr(
+                returned_files=["a.py", "b.py", "c.py", "d.py", "src/util.py"],
+                expected_files=["src/util.py"],
+                returned_symbols=["Helper"],
+                expected_symbols=["Helper"],
+                latency_ms=150,
+            ),
+        ]
+
+        m = compute_metrics(results)
+
+        # Compute expected values manually
+        expected_hit_at_1 = compute_hit_at_k(results, 1)
+        expected_hit_at_5 = compute_hit_at_k(results, 5)
+        expected_symbol_hit_at_5 = compute_symbol_hit_at_k(results, 5)
+        expected_mrr = compute_mrr(results)
+
+        assert m.hit_at_1 == pytest.approx(expected_hit_at_1)
+        assert m.hit_at_5 == pytest.approx(expected_hit_at_5)
+        assert m.symbol_hit_at_5 == pytest.approx(expected_symbol_hit_at_5)
+        assert m.mrr == pytest.approx(expected_mrr)
+        # chunk_hit_at_5 defaults to 0 when no expected_content present
+        assert m.chunk_hit_at_5 == 0.0
+
+    def test_composite_score_unchanged_with_chunk_defaults(self):
+        results = [
+            _make_qr(
+                returned_files=["src/app.py"],
+                expected_files=["src/app.py"],
+                returned_symbols=["MyClass"],
+                expected_symbols=["MyClass"],
+                latency_ms=100,
+            ),
+            _make_qr(
+                returned_files=["wrong.py"],
+                expected_files=["src/config.py"],
+                returned_symbols=["OtherClass"],
+                expected_symbols=["Config"],
+                latency_ms=200,
+            ),
+        ]
+        m = compute_metrics(results, ingest_total_sec=5.0, ingest_total_files=100)
+        assert 0.0 < m.composite_score < 1.0
+        assert m.chunk_hit_at_5 == 0.0
+
+    def test_all_existing_breakdowns_still_present_with_chunk_defaults(self):
+        results = [
+            _make_qr(
+                returned_files=["src/app.py"],
+                expected_files=["src/app.py"],
+                returned_symbols=["MyClass"],
+                expected_symbols=["MyClass"],
+                latency_ms=100,
+            ),
+            _make_qr(
+                returned_files=["wrong.py"],
+                expected_files=["src/config.py"],
+                returned_symbols=["OtherClass"],
+                expected_symbols=["Config"],
+                latency_ms=200,
+            ),
+        ]
+        m = compute_metrics(results)
+        # Breakdowns should still exist with expected structure
+        assert "easy" in m.by_difficulty or "medium" in m.by_difficulty
+        assert "locate" in m.by_type
+        assert "hit_at_5" in m.by_type.get("locate", {})
+
+    def test_numeric_identity_of_key_metrics_chunk_vs_no_chunk(self):
+        """Verify identical numeric values for key metrics with vs without chunk data."""
+        results_no_chunk = [
+            _make_qr(
+                returned_files=["src/app.py"],
+                expected_files=["src/app.py"],
+                latency_ms=100,
+            ),
+            _make_qr(
+                returned_files=["wrong.py", "ok.py"],
+                expected_files=["ok.py"],
+                latency_ms=200,
+            ),
+            _make_qr(
+                returned_files=["a.py", "b.py", "c.py"],
+                expected_files=["nonexistent.py"],
+                latency_ms=300,
+            ),
+        ]
+
+        results_with_chunk = [
+            _make_qr(
+                returned_files=["src/app.py"],
+                expected_files=["src/app.py"],
+                latency_ms=100,
+            ),
+            _make_qr(
+                returned_files=["wrong.py", "ok.py"],
+                expected_files=["ok.py"],
+                latency_ms=200,
+            ),
+            _make_qr(
+                returned_files=["a.py", "b.py", "c.py"],
+                expected_files=["nonexistent.py"],
+                latency_ms=300,
+            ),
+        ]
+        # Add chunk data to second set
+        results_with_chunk[0].expected_content = ["class App"]
+        results_with_chunk[0].returned_contents = ["class App: ..."]
+        results_with_chunk[0].found_chunk = True
+        results_with_chunk[1].expected_content = ["def handler"]
+        results_with_chunk[1].returned_contents = ["unrelated code"]
+        results_with_chunk[1].found_chunk = False
+        # results_with_chunk[2] has no expected_content → excluded
+
+        m_no = compute_metrics(results_no_chunk)
+        m_with = compute_metrics(results_with_chunk)
+
+        # Key metrics must be numerically identical
+        assert m_no.hit_at_1 == m_with.hit_at_1
+        assert m_no.hit_at_3 == m_with.hit_at_3
+        assert m_no.hit_at_5 == m_with.hit_at_5
+        assert m_no.hit_at_10 == m_with.hit_at_10
+        assert m_no.symbol_hit_at_5 == m_with.symbol_hit_at_5
+        assert m_no.mrr == m_with.mrr
+        assert m_no.query_latency_p50_ms == m_with.query_latency_p50_ms
+        assert m_no.query_latency_p95_ms == m_with.query_latency_p95_ms
+        assert m_no.query_latency_mean_ms == m_with.query_latency_mean_ms
+        assert m_no.composite_score == m_with.composite_score
+        # chunk_hit_at_5 differs (2 with expected_content, 1 hit → 0.5)
+        assert m_with.chunk_hit_at_5 == pytest.approx(0.5)

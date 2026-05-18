@@ -34,6 +34,9 @@ class QueryResult:
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     total_llm_tokens: int | None = None
+    returned_contents: list[str] = field(default_factory=list)
+    found_chunk: bool = False
+    expected_content: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -81,6 +84,9 @@ class BenchmarkMetrics:
     avg_completion_tokens: float = 0.0
     avg_total_llm_tokens: float = 0.0
     total_llm_tokens: int = 0
+
+    # Chunk-level retrieval accuracy
+    chunk_hit_at_5: float = 0.0
 
     # Breakdowns
     by_difficulty: dict[str, dict] = field(default_factory=dict)
@@ -156,6 +162,34 @@ def symbol_matches(returned_symbols: list[str], expected: str) -> bool:
     return False
 
 
+def content_matches(
+    returned_contents: list[str],
+    expected: str,
+    min_overlap: int = 0,
+) -> bool:
+    """Check if *expected* appears as a substring of any returned content.
+
+    Matching is case-insensitive (both sides are ``casefold()``-ed), and
+    *expected* must be at least *min_overlap* characters long.  Empty strings
+    on either side produce ``False``.
+
+    Args:
+        returned_contents: Content strings returned by the RAG server.
+        expected: The ground-truth content substring to look for.
+        min_overlap: Minimum length *expected* must have to be considered.
+            Dataset entries are guaranteed to be at least 20 characters.
+    """
+    if not returned_contents or not expected:
+        return False
+    if len(expected) < min_overlap:
+        return False
+    folded_expected = expected.casefold()
+    for content in returned_contents:
+        if folded_expected in content.casefold():
+            return True
+    return False
+
+
 def compute_hit_at_k(results: list[QueryResult], k: int) -> float:
     """Compute Hit@K: fraction of queries where the correct file is in top-K.
 
@@ -198,6 +232,30 @@ def compute_symbol_hit_at_k(results: list[QueryResult], k: int) -> float:
                 hits += 1
                 break
     return hits / total_with_symbols if total_with_symbols else 0.0
+
+
+def compute_chunk_hit_at_k(results: list[QueryResult], k: int = 5) -> float:
+    """Compute Chunk Hit@K: fraction of queries with non-empty expected_content
+    where the matching chunk appears in the top-K returned contents.
+
+    Returns a float in [0, 1].  Queries without ``expected_content`` are
+    excluded from the denominator so that only queries with a defined
+    ground-truth chunk contribute to the metric.
+
+    The matching decision is based on the pre-computed ``found_chunk`` flag on
+    each ``QueryResult``.
+    """
+    if not results or k <= 0:
+        return 0.0
+    hits = 0
+    total_with_content = 0
+    for r in results:
+        if not r.expected_content:
+            continue
+        total_with_content += 1
+        if r.found_chunk:
+            hits += 1
+    return hits / total_with_content if total_with_content else 0.0
 
 
 def compute_mrr(results: list[QueryResult]) -> float:
@@ -470,6 +528,7 @@ def compute_metrics(
         hit_at_10=compute_hit_at_k(results, 10),
         symbol_hit_at_5=compute_symbol_hit_at_k(results, 5),
         mrr=compute_mrr(results),
+        chunk_hit_at_5=compute_chunk_hit_at_k(results, 5),
         query_latency_p50_ms=latency_stats["p50_ms"],
         query_latency_p95_ms=latency_stats["p95_ms"],
         query_latency_p99_ms=latency_stats["p99_ms"],
