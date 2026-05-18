@@ -128,6 +128,9 @@
                 <option value="query_latency_p95_ms">Latency p95</option>
                 <option value="ingest_total_sec">Ingest Time</option>
                 <option value="ram_peak_mb">RAM Peak</option>
+                <option value="avg_response_tokens">Avg Tokens</option>
+                <option value="p95_response_tokens">P95 Tokens</option>
+                <option value="avg_llm_tokens">Avg LLM Tokens</option>
             </select>
         </label>
         <button id="compareBtn" onclick="toggleChart()">Compare Selected</button>
@@ -149,6 +152,9 @@
                 <th data-sort="ingest_total_sec">Ingest</th>
                 <th data-sort="ram_peak_mb">RAM</th>
                 <th data-sort="composite_score">Score</th>
+                <th data-sort="avg_response_tokens">Avg Tokens</th>
+                <th data-sort="p95_response_tokens">P95 Tokens</th>
+                <th data-sort="avg_llm_tokens">Avg LLM Tokens</th>
             </tr>
         </thead>
         <tbody id="tbody"></tbody>
@@ -171,21 +177,22 @@
 
         async function loadData() {
             const sort = document.getElementById('sortSelect').value;
-            const order = ['query_latency_p50_ms', 'query_latency_p95_ms', 'ingest_total_sec', 'ram_peak_mb'].includes(sort) ? 'asc' : 'desc';
+            const order = ['query_latency_p50_ms', 'query_latency_p95_ms', 'ingest_total_sec', 'ram_peak_mb',
+                           'avg_response_tokens', 'p95_response_tokens', 'avg_llm_tokens'].includes(sort) ? 'asc' : 'desc';
             try {
                 const res = await fetch(`/api/leaderboard?sort_by=${sort}&order=${order}&limit=50`);
                 const data = await res.json();
                 entries = data.entries || [];
                 renderTable();
             } catch (e) {
-                document.getElementById('tbody').innerHTML = '<tr><td colspan="13" class="empty">Failed to load data</td></tr>';
+                document.getElementById('tbody').innerHTML = '<tr><td colspan="16" class="empty">Failed to load data</td></tr>';
             }
         }
 
         function renderTable() {
             const tbody = document.getElementById('tbody');
             if (!entries.length) {
-                tbody.innerHTML = '<tr><td colspan="13" class="empty">No benchmark results yet. Run: rag-bench run --preset nova-rag</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="16" class="empty">No benchmark results yet. Run: rag-bench run --preset nova-rag</td></tr>';
                 return;
             }
 
@@ -213,6 +220,9 @@
                     <td class="metric">${e.ingest_total_sec.toFixed(1)}s</td>
                     <td class="metric">${e.ram_peak_mb.toFixed(0)} MB</td>
                     <td class="score ${scoreClass(e.composite_score)}">${e.composite_score.toFixed(4)}</td>
+                    <td class="metric">${fmtTokens(e.avg_response_tokens)}</td>
+                    <td class="metric">${fmtTokens(e.p95_response_tokens)}</td>
+                    <td class="metric">${fmtTokens(e.avg_llm_tokens)}</td>
                 </tr>`;
             }).join('');
         }
@@ -220,6 +230,10 @@
         function pct(v) { return (v * 100).toFixed(1) + '%'; }
         function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
         function scoreClass(s) { return s >= 0.7 ? 'good' : s >= 0.4 ? 'mid' : 'bad'; }
+        function fmtTokens(v) {
+            if (v == null || v === 0) return '0';
+            return Math.round(v).toLocaleString();
+        }
 
         function onSelect(cb) {
             if (cb.checked) selected.add(cb.dataset.id);

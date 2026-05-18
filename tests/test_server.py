@@ -824,6 +824,101 @@ class TestBackCompatOldResultJson:
 
 
 # ---------------------------------------------------------------------------
+# VAL-SERVER-007: Leaderboard HTML shows token columns
+# ---------------------------------------------------------------------------
+
+class TestHtmlTokenColumns:
+    """VAL-SERVER-007: GET / returns HTML containing token column headers."""
+
+    def test_html_contains_token_column_headers(self, test_client):
+        """GET / returns HTML with 'Avg Tokens' and 'P95 Tokens' headers."""
+        response = test_client.get("/")
+        assert response.status_code == 200
+        html = response.text
+        assert "Avg Tokens" in html, (
+            "HTML should contain 'Avg Tokens' column header"
+        )
+        assert "P95 Tokens" in html, (
+            "HTML should contain 'P95 Tokens' column header"
+        )
+
+    def test_html_contains_avg_llm_tokens_header(self, test_client):
+        """GET / returns HTML with 'Avg LLM Tokens' header."""
+        response = test_client.get("/")
+        assert response.status_code == 200
+        html = response.text
+        assert "Avg LLM Tokens" in html, (
+            "HTML should contain 'Avg LLM Tokens' column header"
+        )
+
+    def test_html_token_columns_are_sortable(self, test_client):
+        """Token column headers have data-sort attributes for sorting."""
+        response = test_client.get("/")
+        assert response.status_code == 200
+        html = response.text
+        # Verify sort data attributes exist for token columns
+        assert 'data-sort="avg_response_tokens"' in html, (
+            "Avg Tokens column should be sortable"
+        )
+        assert 'data-sort="p95_response_tokens"' in html, (
+            "P95 Tokens column should be sortable"
+        )
+        assert 'data-sort="avg_llm_tokens"' in html, (
+            "Avg LLM Tokens column should be sortable"
+        )
+
+    def test_leaderboard_table_has_extra_columns_for_tokens(self, test_client):
+        """The leaderboard table renders token column cells."""
+        # The page loads data dynamically via JavaScript, so we verify the
+        # HTML structure includes the token column headers and proper colspan.
+        response = test_client.get("/")
+        assert response.status_code == 200
+        html = response.text
+        # Verify the empty state colspan accounts for new columns (was 13, now 16)
+        assert 'colspan="16"' in html, (
+            "Empty state colspan should be 16 to account for new token columns"
+        )
+        # Verify token column headers are present
+        assert "Avg Tokens" in html
+        assert "P95 Tokens" in html
+        assert "Avg LLM Tokens" in html
+
+    def test_html_sort_dropdown_has_token_options(self, test_client):
+        """The sort dropdown includes token column options."""
+        response = test_client.get("/")
+        assert response.status_code == 200
+        html = response.text
+        assert 'value="avg_response_tokens"' in html, (
+            "Sort dropdown should have avg_response_tokens option"
+        )
+        assert 'value="p95_response_tokens"' in html, (
+            "Sort dropdown should have p95_response_tokens option"
+        )
+        assert 'value="avg_llm_tokens"' in html, (
+            "Sort dropdown should have avg_llm_tokens option"
+        )
+
+    def test_legacy_row_zero_tokens_renders(self, test_client):
+        """Legacy rows with 0 in token columns render without breaking layout."""
+        # Submit a legacy payload without token fields
+        payload = _valid_payload()
+        payload["retrieval"].pop("tokens", None)
+        payload["efficiency"].pop("avg_total_llm_tokens", None)
+        test_client.post("/api/submit", json=payload)
+
+        # The page loads data dynamically via JS, so HTML source won't contain
+        # the data. Just verify the page renders successfully.
+        response = test_client.get("/")
+        assert response.status_code == 200
+        html = response.text
+        # Page should render without error
+        assert "<table" in html
+        # Verify token column headers are present (handles 0-value rows fine)
+        assert "Avg Tokens" in html
+        assert "P95 Tokens" in html
+
+
+# ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
