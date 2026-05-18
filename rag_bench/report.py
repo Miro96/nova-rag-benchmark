@@ -248,7 +248,10 @@ def generate_comparison_report(
             "ram_peak_mb": ingest.get("ram_peak_mb"),
             "composite_score": r.get("composite_score"),
             "avg_tool_calls": efficiency.get("avg_tool_calls"),
-            "avg_response_tokens": tokens.get("avg") or efficiency.get("avg_response_tokens"),
+            "avg_response_tokens": (
+                tokens["avg"] if "avg" in tokens
+                else efficiency.get("avg_response_tokens")
+            ),
             "p95_response_tokens": tokens.get("p95"),
         }
 
@@ -490,14 +493,18 @@ def _percentile(values: list[float], pct: float) -> float:
 
 
 def _compute_cv(replicates: list[dict[str, Any]]) -> dict[str, Any]:
-    """Compute coefficient of variation (std/mean) across replicates."""
+    """Compute coefficient of variation (std/mean) across replicates.
+
+    ``cv_avg_response_tokens`` is only included when at least two replicates
+    carry non-None ``avg_response_tokens`` values.
+    """
     if not replicates or len(replicates) < 2:
         return {"cv_hit_at_5": None, "note": "Need at least 2 replicates"}
 
-    metrics_keys = [
+    # Core metrics always computed
+    metrics_keys: list[str] = [
         "hit_at_1", "hit_at_3", "hit_at_5", "hit_at_10",
         "symbol_hit_at_5", "mrr", "composite_score",
-        "avg_response_tokens",
     ]
     cv: dict[str, Any] = {}
     for key in metrics_keys:
@@ -509,6 +516,19 @@ def _compute_cv(replicates: list[dict[str, Any]]) -> dict[str, Any]:
             variance = sum((v - mean) ** 2 for v in values) / len(values)
             std = math.sqrt(variance)
             cv[f"cv_{key}"] = round(std / mean, 4)
+
+    # Token CV: only include when at least 2 replicates have non-None data
+    token_values = [r.get("avg_response_tokens") for r in replicates]
+    token_values = [v for v in token_values if v is not None]
+    if len(token_values) >= 2:
+        mean = sum(token_values) / len(token_values)
+        if mean == 0:
+            cv["cv_avg_response_tokens"] = 0.0 if all(v == 0 for v in token_values) else None
+        else:
+            variance = sum((v - mean) ** 2 for v in token_values) / len(token_values)
+            std = math.sqrt(variance)
+            cv["cv_avg_response_tokens"] = round(std / mean, 4)
+
     return cv
 
 

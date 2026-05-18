@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -71,25 +72,52 @@ def _make_result(
     by_type: dict | None = None,
     by_repo: dict | None = None,
     replicates: list[dict] | None = None,
+    tokens: dict | None = None,
+    avg_response_tokens_reps: list[float | None] | None = None,
 ) -> dict:
+    """Build a synthetic benchmark result dict for testing.
+
+    *tokens* is placed as ``retrieval.tokens`` (e.g. ``{"avg": 1234.5, "p95": 1800}``).
+    *avg_response_tokens_reps* sets the per-replicate ``avg_response_tokens`` values;
+    if given it must have the same length as the number of replicates.
+    """
+    retrieval: dict[str, Any] = {
+        "total_queries": 30,
+        "total_hits": 15,
+        "hit_at_1": round(hit_at_5 * 0.4, 4),
+        "hit_at_3": round(hit_at_5 * 0.8, 4),
+        "hit_at_5": round(hit_at_5, 4),
+        "hit_at_10": round(hit_at_5 * 1.1, 4),
+        "symbol_hit_at_5": round(hit_at_5 * 0.3, 4),
+        "mrr": round(mrr, 4),
+        "latency": {
+            "p50_ms": round(latency_p50, 1),
+            "p95_ms": round(latency_p95, 1),
+            "p99_ms": round(latency_p95 * 1.2, 1),
+            "mean_ms": round(latency_mean, 1),
+        },
+    }
+    if tokens is not None:
+        retrieval["tokens"] = tokens
+
+    if replicates is None:
+        reps = [
+            {"index": 0, "hit_at_5": hit_at_5 - 0.02, "mrr": mrr - 0.01,
+             "composite_score": composite_score - 0.01},
+            {"index": 1, "hit_at_5": hit_at_5, "mrr": mrr,
+             "composite_score": composite_score},
+            {"index": 2, "hit_at_5": hit_at_5 + 0.02, "mrr": mrr + 0.01,
+             "composite_score": composite_score + 0.01},
+        ]
+        if avg_response_tokens_reps is not None:
+            for rep, val in zip(reps, avg_response_tokens_reps):
+                rep["avg_response_tokens"] = val
+    else:
+        reps = replicates
+
     return {
         "server": {"name": name, "version": "1.0", "detected_tools": {}},
-        "retrieval": {
-            "total_queries": 30,
-            "total_hits": 15,
-            "hit_at_1": round(hit_at_5 * 0.4, 4),
-            "hit_at_3": round(hit_at_5 * 0.8, 4),
-            "hit_at_5": round(hit_at_5, 4),
-            "hit_at_10": round(hit_at_5 * 1.1, 4),
-            "symbol_hit_at_5": round(hit_at_5 * 0.3, 4),
-            "mrr": round(mrr, 4),
-            "latency": {
-                "p50_ms": round(latency_p50, 1),
-                "p95_ms": round(latency_p95, 1),
-                "p99_ms": round(latency_p95 * 1.2, 1),
-                "mean_ms": round(latency_mean, 1),
-            },
-        },
+        "retrieval": retrieval,
         "ingest": {
             "total_files": 100,
             "total_sec": 5.0,
@@ -118,14 +146,7 @@ def _make_result(
             _make_query_detail(f"Q{i:03d}", found_file=(i % 3 == 0))
             for i in range(30)
         ],
-        "replicates": replicates if replicates is not None else [
-            {"index": 0, "hit_at_5": hit_at_5 - 0.02, "mrr": mrr - 0.01,
-             "composite_score": composite_score - 0.01},
-            {"index": 1, "hit_at_5": hit_at_5, "mrr": mrr,
-             "composite_score": composite_score},
-            {"index": 2, "hit_at_5": hit_at_5 + 0.02, "mrr": mrr + 0.01,
-             "composite_score": composite_score + 0.01},
-        ],
+        "replicates": reps,
     }
 
 
@@ -976,3 +997,257 @@ class TestCompareCLI:
             "--clean-index", "--output", str(tmp_path / "report.json"),
         ])
         assert "no such option: --clean-index" not in result.output
+
+
+# ---------------------------------------------------------------------------
+# VAL-COMPARE-001: Per-preset token metrics included
+# ---------------------------------------------------------------------------
+
+class TestCompareTokenMetrics:
+    """VAL-COMPARE-001: generate_comparison_report returns metrics[preset]
+    dicts with avg_response_tokens and p95_response_tokens keys."""
+
+    def test_metrics_contain_token_fields_when_present(self):
+        """When tokens are in the result, metrics carries them."""
+        results = [
+            _make_result("grep-glob", tokens={"avg": 1234.5, "p50": 1100.0,
+                                               "p95": 1800.0, "total": 129000}),
+            _make_result("naive-rag", tokens={"avg": 950.0, "p50": 800.0,
+                                               "p95": 1500.0, "total": 95000}),
+        ]
+        report = generate_comparison_report(results)
+        assert report["metrics"]["grep-glob"]["avg_response_tokens"] == 1234.5
+        assert report["metrics"]["grep-glob"]["p95_response_tokens"] == 1800.0
+        assert report["metrics"]["naive-rag"]["avg_response_tokens"] == 950.0
+        assert report["metrics"]["naive-rag"]["p95_response_tokens"] == 1500.0
+
+    def test_metrics_handle_missing_tokens(self):
+        """Missing tokens → None in metrics, no crash."""
+        results = [
+            _make_result("no-tokens-preset"),
+        ]
+        report = generate_comparison_report(results)
+        assert "avg_response_tokens" in report["metrics"]["no-tokens-preset"]
+        assert report["metrics"]["no-tokens-preset"]["avg_response_tokens"] is None
+        assert report["metrics"]["no-tokens-preset"]["p95_response_tokens"] is None
+
+    def test_avg_zero_not_falsy(self):
+        """avg_response_tokens=0 is preserved (not treated as falsy fallback)."""
+        results = [
+            _make_result("zero-tokens", tokens={"avg": 0.0, "p50": 0.0,
+                                                 "p95": 0.0, "total": 0}),
+        ]
+        report = generate_comparison_report(results)
+        assert report["metrics"]["zero-tokens"]["avg_response_tokens"] == 0.0
+        assert report["metrics"]["zero-tokens"]["p95_response_tokens"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# VAL-COMPARE-002: Summary rows include Avg Tokens and P95 Tokens
+# ---------------------------------------------------------------------------
+
+class TestCompareTokenSummary:
+    """VAL-COMPARE-002: The returned summary list contains two new rows
+    whose 'metric' field equals 'Avg Tokens' and 'P95 Tokens'."""
+
+    def test_summary_has_avg_and_p95_token_rows(self):
+        """Summary includes 'Avg Tokens' and 'P95 Tokens' rows."""
+        results = [
+            _make_result("grep-glob", tokens={"avg": 1234.5, "p50": 1100.0,
+                                               "p95": 1800.0, "total": 129000}),
+            _make_result("naive-rag", tokens={"avg": 950.0, "p50": 800.0,
+                                               "p95": 1500.0, "total": 95000}),
+        ]
+        report = generate_comparison_report(results)
+        summary = report["summary"]
+
+        avg_row = next((r for r in summary if r["metric"] == "Avg Tokens"), None)
+        p95_row = next((r for r in summary if r["metric"] == "P95 Tokens"), None)
+
+        assert avg_row is not None, "Avg Tokens row missing from summary"
+        assert p95_row is not None, "P95 Tokens row missing from summary"
+        assert avg_row["grep-glob"] == 1234.5
+        assert avg_row["naive-rag"] == 950.0
+        assert p95_row["grep-glob"] == 1800.0
+        assert p95_row["naive-rag"] == 1500.0
+
+    def test_summary_token_rows_with_missing_data(self):
+        """When token data is missing, summary rows show None for that preset."""
+        results = [
+            _make_result("grep-glob", tokens={"avg": 1234.5, "p95": 1800.0}),
+            _make_result("no-tokens"),
+        ]
+        report = generate_comparison_report(results)
+        summary = report["summary"]
+
+        avg_row = next((r for r in summary if r["metric"] == "Avg Tokens"), None)
+        assert avg_row is not None
+        assert avg_row["grep-glob"] == 1234.5
+        assert avg_row["no-tokens"] is None
+
+
+# ---------------------------------------------------------------------------
+# VAL-COMPARE-003: A/B deltas include response_tokens_delta
+# ---------------------------------------------------------------------------
+
+class TestCompareTokenABDelta:
+    """VAL-COMPARE-003: ab_deltas_vs_baseline[preset] contains
+    response_tokens_delta (baseline_avg - preset_avg; positive = preset saves)."""
+
+    def test_response_tokens_delta_present(self):
+        """When baseline and preset both have token data, delta is computed."""
+        results = [
+            _make_result("grep-glob", tokens={"avg": 2000.0, "p50": 1800.0,
+                                               "p95": 2500.0, "total": 200000}),
+            _make_result("naive-rag", tokens={"avg": 950.0, "p50": 800.0,
+                                               "p95": 1500.0, "total": 95000}),
+        ]
+        report = generate_comparison_report(results)
+        deltas = report["ab_deltas_vs_baseline"]
+        assert "naive-rag" in deltas
+        assert "response_tokens_delta" in deltas["naive-rag"]
+        # baseline(2000) - preset(950) = 1050 (positive = preset saves)
+        assert deltas["naive-rag"]["response_tokens_delta"] == pytest.approx(1050.0, abs=0.1)
+
+    def test_response_tokens_delta_negative_when_preset_uses_more(self):
+        """When preset uses MORE tokens than baseline, delta is negative."""
+        results = [
+            _make_result("grep-glob", tokens={"avg": 500.0, "p95": 800.0}),
+            _make_result("heavy-preset", tokens={"avg": 3000.0, "p95": 5000.0}),
+        ]
+        report = generate_comparison_report(results)
+        deltas = report["ab_deltas_vs_baseline"]
+        # baseline(500) - preset(3000) = -2500 (negative = preset costs more)
+        assert deltas["heavy-preset"]["response_tokens_delta"] == pytest.approx(-2500.0, abs=0.1)
+
+    def test_response_tokens_delta_none_when_either_missing(self):
+        """When baseline or preset lacks token data, delta is None."""
+        results = [
+            _make_result("grep-glob", tokens={"avg": 2000.0, "p95": 2500.0}),
+            _make_result("no-tokens"),
+        ]
+        report = generate_comparison_report(results)
+        deltas = report["ab_deltas_vs_baseline"]
+        assert deltas["no-tokens"]["response_tokens_delta"] is None
+
+
+# ---------------------------------------------------------------------------
+# VAL-COMPARE-004: CV includes cv_avg_response_tokens
+# ---------------------------------------------------------------------------
+
+class TestCompareTokenCV:
+    """VAL-COMPARE-004: reproducibility.coefficient_of_variation[preset]
+    contains cv_avg_response_tokens when at least 2 replicates carry token data."""
+
+    def test_cv_includes_avg_response_tokens_with_enough_data(self):
+        """When at least 2 replicates have avg_response_tokens, CV is computed."""
+        results = [
+            _make_result("preset-a",
+                         tokens={"avg": 1000.0, "p95": 1500.0},
+                         avg_response_tokens_reps=[980.0, 1000.0, 1020.0]),
+        ]
+        report = generate_comparison_report(results)
+        cv_data = report["reproducibility"]["coefficient_of_variation"]
+        assert "preset-a" in cv_data
+        assert "cv_avg_response_tokens" in cv_data["preset-a"]
+        # CV should be small but non-zero (replicates are 980, 1000, 1020)
+        cv_val = cv_data["preset-a"]["cv_avg_response_tokens"]
+        assert cv_val is not None
+        assert cv_val > 0
+
+    def test_cv_omits_avg_response_tokens_when_fewer_than_two_have_data(self):
+        """When fewer than 2 replicates carry avg_response_tokens,
+        cv_avg_response_tokens is NOT present in the CV dict."""
+        results = [
+            _make_result("preset-b",
+                         tokens={"avg": 1000.0, "p95": 1500.0},
+                         avg_response_tokens_reps=[1000.0, None, None]),
+        ]
+        report = generate_comparison_report(results)
+        cv_data = report["reproducibility"]["coefficient_of_variation"]
+        assert "preset-b" in cv_data
+        assert "cv_avg_response_tokens" not in cv_data["preset-b"]
+
+    def test_cv_omits_when_no_token_data_at_all(self):
+        """When no replicates carry avg_response_tokens, CV doesn't include it."""
+        results = [
+            _make_result("preset-c"),
+        ]
+        report = generate_comparison_report(results)
+        cv_data = report["reproducibility"]["coefficient_of_variation"]
+        assert "preset-c" in cv_data
+        assert "cv_avg_response_tokens" not in cv_data["preset-c"]
+
+    def test_cv_included_with_two_out_of_three(self):
+        """When exactly 2 of 3 replicates have token data, CV is included."""
+        results = [
+            _make_result("preset-d",
+                         tokens={"avg": 500.0, "p95": 800.0},
+                         avg_response_tokens_reps=[500.0, 500.0, None]),
+        ]
+        report = generate_comparison_report(results)
+        cv_data = report["reproducibility"]["coefficient_of_variation"]
+        assert "cv_avg_response_tokens" in cv_data["preset-d"]
+        # Both values equal → CV should be 0
+        assert cv_data["preset-d"]["cv_avg_response_tokens"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# VAL-COMPARE-005: Missing token data does not break report
+# ---------------------------------------------------------------------------
+
+class TestCompareTokenMissingNoCrash:
+    """VAL-COMPARE-005: When a result dict has no token fields the report
+    generator omits the row or fills with None, never raising."""
+
+    def test_no_tokens_at_all_does_not_raise(self):
+        """Results without any token fields produce a valid report."""
+        results = [
+            _make_result("no-tokens-1"),
+            _make_result("no-tokens-2"),
+        ]
+        report = generate_comparison_report(results)
+        assert report["metrics"]["no-tokens-1"]["avg_response_tokens"] is None
+        assert report["metrics"]["no-tokens-1"]["p95_response_tokens"] is None
+
+    def test_partial_tokens_mixed_presets(self):
+        """Some presets with tokens, some without — no crash."""
+        results = [
+            _make_result("with-tokens", tokens={"avg": 500.0, "p95": 800.0}),
+            _make_result("without-tokens"),
+            _make_result("also-with-tokens", tokens={"avg": 1200.0, "p95": 2000.0}),
+        ]
+        report = generate_comparison_report(results)
+        assert report["metrics"]["with-tokens"]["avg_response_tokens"] == 500.0
+        assert report["metrics"]["without-tokens"]["avg_response_tokens"] is None
+        assert report["metrics"]["also-with-tokens"]["avg_response_tokens"] == 1200.0
+
+    def test_tokens_dict_empty(self):
+        """Empty tokens dict → None in metrics, no crash."""
+        results = [
+            _make_result("empty-tokens", tokens={}),
+        ]
+        report = generate_comparison_report(results)
+        assert report["metrics"]["empty-tokens"]["avg_response_tokens"] is None
+        assert report["metrics"]["empty-tokens"]["p95_response_tokens"] is None
+
+    def test_ab_deltas_no_crash_without_tokens(self):
+        """AB deltas don't crash when baseline lacks token data."""
+        results = [
+            _make_result("grep-glob"),  # no tokens
+            _make_result("naive-rag", tokens={"avg": 950.0, "p95": 1500.0}),
+        ]
+        report = generate_comparison_report(results)
+        # Should not raise
+        assert "naive-rag" in report["ab_deltas_vs_baseline"]
+        assert report["ab_deltas_vs_baseline"]["naive-rag"]["response_tokens_delta"] is None
+
+    def test_report_is_json_serializable_with_none_tokens(self):
+        """Report with None token values is JSON-serializable."""
+        results = [
+            _make_result("no-tokens"),
+        ]
+        report = generate_comparison_report(results)
+        json_str = json.dumps(report)
+        parsed = json.loads(json_str)
+        assert parsed["metrics"]["no-tokens"]["avg_response_tokens"] is None
