@@ -36,8 +36,25 @@ def cli():
     help="Wipe any existing nova-rag-style index directory before ingest for a clean reproducible run.",
 )
 @click.option("--output", "-o", type=click.Path(), help="Output JSON path")
+@click.option(
+    "--tokenizer",
+    default="tiktoken",
+    type=click.Choice(["tiktoken", "simple"]),
+    help="Tokenizer for counting response tokens (falls back to simple if tiktoken unavailable).",
+)
+@click.option(
+    "--token-encoding",
+    default="cl100k_base",
+    help="Encoding name for tiktoken (e.g. cl100k_base, o200k_base).",
+)
+@click.option(
+    "--include-tokens-in-score",
+    is_flag=True,
+    help="Include token efficiency in the composite score.",
+)
 def run(preset, config, command, transport, repo, ab_baseline, top_k,
-        replicates, clean_index, output):
+        replicates, clean_index, output,
+        tokenizer, token_encoding, include_tokens_in_score):
     """Run benchmark on a RAG server."""
     from rag_bench.runner import run_benchmark
 
@@ -57,6 +74,9 @@ def run(preset, config, command, transport, repo, ab_baseline, top_k,
             top_k=top_k,
             replicates=replicates,
             clean_index=clean_index,
+            tokenizer_name=tokenizer,
+            token_encoding=token_encoding,
+            include_tokens_in_score=include_tokens_in_score,
         ))
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
@@ -83,7 +103,24 @@ def run(preset, config, command, transport, repo, ab_baseline, top_k,
     help="Wipe any existing index directory before ingest for a clean reproducible run.",
 )
 @click.option("--output", "-o", type=click.Path(), help="Output JSON path for comparison report")
-def compare(presets, repo, top_k, replicates, clean_index, output):
+@click.option(
+    "--tokenizer",
+    default="tiktoken",
+    type=click.Choice(["tiktoken", "simple"]),
+    help="Tokenizer for counting response tokens (falls back to simple if tiktoken unavailable).",
+)
+@click.option(
+    "--token-encoding",
+    default="cl100k_base",
+    help="Encoding name for tiktoken (e.g. cl100k_base, o200k_base).",
+)
+@click.option(
+    "--include-tokens-in-score",
+    is_flag=True,
+    help="Include token efficiency in the composite score.",
+)
+def compare(presets, repo, top_k, replicates, clean_index, output,
+            tokenizer, token_encoding, include_tokens_in_score):
     """Compare multiple RAG MCP servers."""
     from rag_bench.runner import run_benchmark
 
@@ -101,6 +138,9 @@ def compare(presets, repo, top_k, replicates, clean_index, output):
             top_k=top_k,
             replicates=replicates,
             clean_index=clean_index,
+            tokenizer_name=tokenizer,
+            token_encoding=token_encoding,
+            include_tokens_in_score=include_tokens_in_score,
         ))
         results.append(result)
 

@@ -100,6 +100,26 @@ def print_results_table(server_name: str, m: BenchmarkMetrics) -> None:
         f"\n[bold]Composite Score: [green]{m.composite_score:.4f}[/green][/bold]\n"
     )
 
+    # Tokens
+    tokens_table = Table(title="Tokens", show_header=True)
+    tokens_table.add_column("Metric", style="cyan")
+    tokens_table.add_column("Value", style="green", justify="right")
+
+    tokens_table.add_row("avg", f"{m.avg_response_tokens:.1f}")
+    tokens_table.add_row("p50", f"{m.p50_response_tokens:.1f}")
+    tokens_table.add_row("p95", f"{m.p95_response_tokens:.1f}")
+    tokens_table.add_row("total", str(m.total_response_tokens))
+    console.print(tokens_table)
+
+
+def _fmt_tokens(r: dict, key: str) -> str:
+    """Extract a token metric from a result dict, safe for missing data."""
+    tokens = r.get("retrieval", {}).get("tokens")
+    if not tokens or key not in tokens:
+        return "N/A"
+    val = tokens[key]
+    return f"{val:.1f}" if isinstance(val, float) else str(val)
+
 
 def print_comparison_table(results: list[dict]) -> None:
     """Print side-by-side comparison of multiple benchmark results."""
@@ -119,6 +139,8 @@ def print_comparison_table(results: list[dict]) -> None:
         ("Ingest Time", lambda r: f"{r['ingest']['total_sec']:.1f} s"),
         ("Ingest Speed", lambda r: f"{r['ingest']['files_per_sec']:.1f} f/s"),
         ("RAM Peak", lambda r: f"{r['ingest']['ram_peak_mb']:.1f} MB"),
+        ("Avg Tokens", lambda r: _fmt_tokens(r, "avg")),
+        ("P95 Tokens", lambda r: _fmt_tokens(r, "p95")),
         ("Score", lambda r: f"{r['composite_score']:.4f}"),
     ]
 
@@ -167,6 +189,8 @@ def generate_comparison_report(
         retrieval = r.get("retrieval", {})
         latency = retrieval.get("latency", {})
         ingest = r.get("ingest", {})
+        efficiency = r.get("efficiency", {})
+        tokens = retrieval.get("tokens", {})
         presets[name] = {
             "hit_at_1": retrieval.get("hit_at_1"),
             "hit_at_3": retrieval.get("hit_at_3"),
@@ -187,7 +211,9 @@ def generate_comparison_report(
             "index_size_mb": ingest.get("index_size_mb"),
             "ram_peak_mb": ingest.get("ram_peak_mb"),
             "composite_score": r.get("composite_score"),
-            "avg_tool_calls": (r.get("efficiency") or {}).get("avg_tool_calls"),
+            "avg_tool_calls": efficiency.get("avg_tool_calls"),
+            "avg_response_tokens": tokens.get("avg") or efficiency.get("avg_response_tokens"),
+            "p95_response_tokens": tokens.get("p95"),
         }
 
     # --- A/B deltas vs grep-glob baseline ---
@@ -209,6 +235,14 @@ def generate_comparison_report(
                 bv = baseline.get(metric)
                 pv = pdata.get(metric)
                 delta[metric] = round(bv - pv, 1) if (pv is not None and bv is not None) else None
+            # Token delta: baseline - preset (positive = preset saves tokens)
+            b_tokens = baseline.get("avg_response_tokens")
+            p_tokens = pdata.get("avg_response_tokens")
+            delta["response_tokens_delta"] = (
+                round(b_tokens - p_tokens, 1)
+                if (b_tokens is not None and p_tokens is not None)
+                else None
+            )
             ab_deltas[name] = delta
 
     # --- Per-difficulty breakdown ---
@@ -264,6 +298,8 @@ def generate_comparison_report(
         ("Ingest Speed (f/s)", "ingest_files_per_sec", ".1f"),
         ("Index Size (MB)", "index_size_mb", ".1f"),
         ("RAM Peak (MB)", "ram_peak_mb", ".1f"),
+        ("Avg Tokens", "avg_response_tokens", ".1f"),
+        ("P95 Tokens", "p95_response_tokens", ".1f"),
         ("Composite Score", "composite_score", ".4f"),
     ]:
         row: dict[str, Any] = {"metric": metric_label}
@@ -425,6 +461,7 @@ def _compute_cv(replicates: list[dict[str, Any]]) -> dict[str, Any]:
     metrics_keys = [
         "hit_at_1", "hit_at_3", "hit_at_5", "hit_at_10",
         "symbol_hit_at_5", "mrr", "composite_score",
+        "avg_response_tokens",
     ]
     cv: dict[str, Any] = {}
     for key in metrics_keys:

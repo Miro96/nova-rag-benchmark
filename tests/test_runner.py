@@ -235,3 +235,300 @@ class TestDatasetLoader:
         queries = load_queries()
         difficulties = {q.difficulty for q in queries}
         assert difficulties == {"easy", "medium", "hard"}
+
+
+class TestQueryDetailTokens:
+    """Test that _query_detail includes response_tokens."""
+
+    def test_query_detail_includes_response_tokens(self):
+        from rag_bench.metrics import QueryResult
+        from rag_bench.runner import _query_detail
+
+        qr = QueryResult(
+            query_id="test_001",
+            query_text="test query",
+            query_type="locate",
+            difficulty="easy",
+            expected_files=["test.py"],
+            expected_symbols=[],
+            returned_files=["test.py"],
+            returned_symbols=[],
+            latency_ms=50.0,
+            tool_calls=2,
+            repo="flask",
+            response_tokens=150,
+        )
+        detail = _query_detail(qr)
+        assert "response_tokens" in detail
+        assert detail["response_tokens"] == 150
+
+    def test_query_detail_response_tokens_none_by_default(self):
+        from rag_bench.metrics import QueryResult
+        from rag_bench.runner import _query_detail
+
+        qr = QueryResult(
+            query_id="test_001",
+            query_text="test query",
+            query_type="locate",
+            difficulty="easy",
+            expected_files=["test.py"],
+            expected_symbols=[],
+            returned_files=["test.py"],
+            returned_symbols=[],
+            latency_ms=50.0,
+            tool_calls=2,
+            repo="flask",
+        )
+        detail = _query_detail(qr)
+        assert "response_tokens" in detail
+        assert detail["response_tokens"] is None
+
+    def test_query_detail_error_preserves_response_tokens(self):
+        from rag_bench.metrics import QueryResult
+        from rag_bench.runner import _query_detail
+
+        qr = QueryResult(
+            query_id="test_001",
+            query_text="test query",
+            query_type="locate",
+            difficulty="easy",
+            expected_files=["test.py"],
+            expected_symbols=[],
+            returned_files=[],
+            returned_symbols=[],
+            latency_ms=0,
+            tool_calls=0,
+            repo="flask",
+            error="timeout",
+            response_tokens=None,
+        )
+        detail = _query_detail(qr)
+        assert "error" in detail
+        assert detail["error"] == "timeout"
+        assert "response_tokens" in detail
+        assert detail["response_tokens"] is None
+
+
+class TestReplicateSummaryTokens:
+    """Test that _replicate_summary includes avg_response_tokens."""
+
+    def test_replicate_summary_includes_avg_response_tokens(self):
+        from rag_bench.metrics import BenchmarkMetrics
+        from rag_bench.runner import _replicate_summary
+
+        m = BenchmarkMetrics(
+            hit_at_5=0.8,
+            avg_response_tokens=1234.5,
+        )
+        summary = _replicate_summary([m])
+        assert len(summary) == 1
+        assert "avg_response_tokens" in summary[0]
+        assert summary[0]["avg_response_tokens"] == 1234.5
+        # Pre-existing keys remain
+        assert "hit_at_5" in summary[0]
+        assert "hit_at_1" in summary[0]
+
+
+class TestBuildResultJsonTokens:
+    """Test that _build_result_json includes all required token fields."""
+
+    def test_retrieval_tokens_block(self):
+        from rag_bench.metrics import BenchmarkMetrics, QueryResult
+        from rag_bench.runner import _build_result_json
+
+        metrics = BenchmarkMetrics(
+            avg_response_tokens=500.0,
+            p50_response_tokens=450.0,
+            p95_response_tokens=900.0,
+            total_response_tokens=15000,
+        )
+        result = _build_result_json(
+            run_id="test-run",
+            server_config={"name": "test"},
+            metrics=metrics,
+            query_results=[],
+            repos=[],
+            replicate_metrics=[metrics],
+            startup_ms=100.0,
+            detected_tools={},
+        )
+        tokens = result["retrieval"]["tokens"]
+        assert tokens["avg"] == 500.0
+        assert tokens["p50"] == 450.0
+        assert tokens["p95"] == 900.0
+        assert tokens["total"] == 15000
+
+    def test_environment_tokenizer_field(self):
+        from rag_bench.metrics import BenchmarkMetrics
+        from rag_bench.runner import _build_result_json
+
+        metrics = BenchmarkMetrics()
+        result = _build_result_json(
+            run_id="test-run",
+            server_config={"name": "test"},
+            metrics=metrics,
+            query_results=[],
+            repos=[],
+            replicate_metrics=[metrics],
+            startup_ms=100.0,
+            detected_tools={},
+            tokenizer_name="simple",
+        )
+        assert result["environment"]["tokenizer"] == "simple"
+
+    def test_environment_tokenizer_default(self):
+        from rag_bench.metrics import BenchmarkMetrics
+        from rag_bench.runner import _build_result_json
+
+        metrics = BenchmarkMetrics()
+        result = _build_result_json(
+            run_id="test-run",
+            server_config={"name": "test"},
+            metrics=metrics,
+            query_results=[],
+            repos=[],
+            replicate_metrics=[metrics],
+            startup_ms=100.0,
+            detected_tools={},
+        )
+        assert result["environment"]["tokenizer"] == "tiktoken"
+
+    def test_efficiency_includes_avg_response_tokens(self):
+        from rag_bench.metrics import BenchmarkMetrics
+        from rag_bench.runner import _build_result_json
+
+        metrics = BenchmarkMetrics(avg_response_tokens=777.7)
+        result = _build_result_json(
+            run_id="test-run",
+            server_config={"name": "test"},
+            metrics=metrics,
+            query_results=[],
+            repos=[],
+            replicate_metrics=[metrics],
+            startup_ms=100.0,
+            detected_tools={},
+        )
+        assert result["efficiency"]["avg_response_tokens"] == 777.7
+
+    def test_query_details_include_response_tokens(self):
+        from rag_bench.metrics import BenchmarkMetrics, QueryResult
+        from rag_bench.runner import _build_result_json
+
+        qr = QueryResult(
+            query_id="test_001",
+            query_text="test",
+            query_type="locate",
+            difficulty="easy",
+            expected_files=[],
+            expected_symbols=[],
+            returned_files=[],
+            returned_symbols=[],
+            latency_ms=50.0,
+            tool_calls=1,
+            repo="flask",
+            response_tokens=200,
+        )
+        metrics = BenchmarkMetrics(total_queries=1, total_hits=0)
+        result = _build_result_json(
+            run_id="test-run",
+            server_config={"name": "test"},
+            metrics=metrics,
+            query_results=[qr],
+            repos=[],
+            replicate_metrics=[metrics],
+            startup_ms=100.0,
+            detected_tools={},
+        )
+        assert len(result["query_details"]) == 1
+        assert result["query_details"][0]["response_tokens"] == 200
+
+    def test_back_compat_existing_keys_preserved(self):
+        """Pre-existing keys in result JSON retain their shape/type."""
+        from rag_bench.metrics import BenchmarkMetrics, QueryResult
+        from rag_bench.runner import _build_result_json
+
+        qr = QueryResult(
+            query_id="test_001",
+            query_text="test query",
+            query_type="locate",
+            difficulty="easy",
+            expected_files=["test.py"],
+            expected_symbols=["my_func"],
+            returned_files=["test.py"],
+            returned_symbols=["my_func"],
+            latency_ms=50.0,
+            tool_calls=2,
+            repo="flask",
+            response_tokens=100,
+        )
+        metrics = BenchmarkMetrics(
+            hit_at_1=0.5,
+            hit_at_5=0.8,
+            mrr=0.6,
+            query_latency_p50_ms=45.0,
+            query_latency_p95_ms=90.0,
+            total_queries=1,
+            total_hits=1,
+            avg_response_tokens=100.0,
+            p50_response_tokens=100.0,
+            p95_response_tokens=100.0,
+            total_response_tokens=100,
+        )
+        result = _build_result_json(
+            run_id="test-run",
+            server_config={"name": "test"},
+            metrics=metrics,
+            query_results=[qr],
+            repos=[],
+            replicate_metrics=[metrics],
+            startup_ms=100.0,
+            detected_tools={},
+        )
+
+        # Pre-existing top-level keys
+        for key in ("run_id", "bench_version", "server", "environment",
+                     "repos", "replicates", "iqr", "ingest",
+                     "retrieval", "efficiency", "composite_score",
+                     "by_difficulty", "by_type", "by_repo", "query_details"):
+            assert key in result, f"Missing pre-existing key: {key}"
+
+        # Pre-existing retrieval sub-keys
+        for key in ("hit_at_1", "hit_at_3", "hit_at_5", "hit_at_10",
+                     "symbol_hit_at_5", "mrr", "latency", "total_queries", "total_hits"):
+            assert key in result["retrieval"], f"Missing retrieval key: {key}"
+
+        # Pre-existing latency sub-keys
+        for key in ("p50_ms", "p95_ms", "p99_ms", "mean_ms"):
+            assert key in result["retrieval"]["latency"], f"Missing latency key: {key}"
+
+        # Pre-existing query_detail keys
+        qd = result["query_details"][0]
+        for key in ("id", "type", "difficulty", "repo", "found_file",
+                     "found_symbol", "latency_ms", "tool_calls",
+                     "returned_files", "returned_symbols",
+                     "expected_files", "expected_symbols"):
+            assert key in qd, f"Missing query_detail key: {key}"
+
+        # Types preserved
+        assert isinstance(result["composite_score"], float)
+        assert isinstance(qd["latency_ms"], float)
+        assert isinstance(qd["found_file"], bool)
+
+
+class TestRunBenchmarkSignature:
+    """Test that run_benchmark accepts tokenizer parameters."""
+
+    def test_run_benchmark_has_tokenizer_params(self):
+        import inspect
+        from rag_bench.runner import run_benchmark
+
+        sig = inspect.signature(run_benchmark)
+        params = sig.parameters
+        assert "tokenizer_name" in params
+        assert "token_encoding" in params
+        assert "include_tokens_in_score" in params
+
+        # Defaults preserve back-compat
+        assert params["tokenizer_name"].default == "tiktoken"
+        assert params["token_encoding"].default is None
+        assert params["include_tokens_in_score"].default is False

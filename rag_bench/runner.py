@@ -37,6 +37,7 @@ from rag_bench.metrics import (
     symbol_matches,
 )
 from rag_bench.report import print_results_table
+from rag_bench.tokens import get_tokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -184,10 +185,17 @@ async def run_benchmark(
     top_k: int = 10,
     replicates: int = 3,
     clean_index: bool = False,
+    tokenizer_name: str = "tiktoken",
+    token_encoding: str | None = None,
+    include_tokens_in_score: bool = False,
 ) -> dict:
     """Run the full benchmark pipeline."""
     run_id = str(uuid.uuid4())
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+    # Construct tokenizer once at startup; resolved name goes into the result
+    tokenizer = get_tokenizer(tokenizer_name, token_encoding)
+    resolved_tokenizer_name = tokenizer.name
 
     logger.info("=== rag-bench run %s ===", run_id)
     logger.info("Server: %s", server_config.get("name", "custom"))
@@ -324,6 +332,7 @@ async def run_benchmark(
                     )
                     results = await _run_query_pass(
                         adapter, client, queries, repo_dirs, top_k=top_k, replicate=rep,
+                        tokenizer=tokenizer,
                     )
                     replicate_results.append(results)
                     replicate_metrics.append(
@@ -333,6 +342,7 @@ async def run_benchmark(
                             ingest_total_files=total_files,
                             index_size_mb=index_size_mb,
                             ram_peak_mb=0.0,
+                            include_tokens_in_score=include_tokens_in_score,
                         )
                     )
         else:
@@ -415,6 +425,7 @@ async def run_benchmark(
                 )
                 results = await _run_query_pass(
                     adapter, client, queries, repo_dirs, top_k=top_k, replicate=rep,
+                    tokenizer=tokenizer,
                 )
                 replicate_results.append(results)
                 replicate_metrics.append(
@@ -424,6 +435,7 @@ async def run_benchmark(
                         ingest_total_files=total_files,
                         index_size_mb=index_size_mb,
                         ram_peak_mb=0.0,
+                        include_tokens_in_score=include_tokens_in_score,
                     )
                 )
     finally:
@@ -455,6 +467,7 @@ async def run_benchmark(
         ingest_total_files=total_files,
         index_size_mb=index_size_mb,
         ram_peak_mb=ram_peak,
+        include_tokens_in_score=include_tokens_in_score,
     )
 
     # Replace top-level (and breakdown) numeric values with the median across
@@ -480,6 +493,8 @@ async def run_benchmark(
         startup_ms=startup_ms,
         detected_tools=detected_tools,
         baseline_result=baseline_result,
+        tokenizer_name=resolved_tokenizer_name,
+        include_tokens_in_score=include_tokens_in_score,
     )
     return result
 
@@ -492,6 +507,7 @@ async def _run_query_pass(
     top_k: int,
     replicate: int,
     query_timeout: float = 120.0,
+    tokenizer=None,
 ) -> list[QueryResult]:
     """Run all queries once and return per-query results.
 
@@ -512,6 +528,13 @@ async def _run_query_pass(
             )
             search_results = adapter._parse_search_results(raw_result)
 
+            # Compute response tokens from search result content
+            response_tokens: int | None = None
+            if tokenizer is not None:
+                response_tokens = sum(
+                    tokenizer.count(sr.content) for sr in search_results
+                )
+
             returned_files = [r.file_path for r in search_results]
             returned_symbols = [r.symbol for r in search_results if r.symbol]
 
@@ -527,6 +550,7 @@ async def _run_query_pass(
                 latency_ms=raw_result.latency_ms,
                 tool_calls=client.call_count - calls_before,
                 repo=q.repo,
+                response_tokens=response_tokens,
             )
 
             qr.found_file = any(
@@ -621,6 +645,10 @@ _MEDIAN_FIELDS: tuple[str, ...] = (
     "query_latency_mean_ms",
     "avg_tool_calls",
     "composite_score",
+    "avg_response_tokens",
+    "p50_response_tokens",
+    "p95_response_tokens",
+    "total_response_tokens",
 )
 
 
@@ -671,6 +699,7 @@ def _replicate_summary(reps: list[BenchmarkMetrics]) -> list[dict]:
             "latency_mean_ms": round(m.query_latency_mean_ms, 1),
             "avg_tool_calls": round(m.avg_tool_calls, 2),
             "composite_score": round(m.composite_score, 4),
+            "avg_response_tokens": round(m.avg_response_tokens, 1),
         })
     return summary
 
@@ -754,6 +783,8 @@ def _build_result_json(
     detected_tools: dict[str, str | None],
     baseline_result: dict | None = None,
     server_info: dict[str, str] | None = None,
+    tokenizer_name: str = "tiktoken",
+    include_tokens_in_score: bool = False,
 ) -> dict:
     # Resolve server name/version: prefer the MCP initialize handshake,
     # fall back to the preset config.
@@ -777,6 +808,7 @@ def _build_result_json(
             "python": platform.python_version(),
             "cpu": platform.processor() or "unknown",
             "startup_ms": round(startup_ms, 1),
+            "tokenizer": tokenizer_name,
         },
         "startup_ms": round(startup_ms, 1),
         "repos": [r.name for r in repos],
@@ -804,9 +836,16 @@ def _build_result_json(
                 "p99_ms": round(metrics.query_latency_p99_ms, 1),
                 "mean_ms": round(metrics.query_latency_mean_ms, 1),
             },
+            "tokens": {
+                "avg": round(metrics.avg_response_tokens, 1),
+                "p50": round(metrics.p50_response_tokens, 1),
+                "p95": round(metrics.p95_response_tokens, 1),
+                "total": metrics.total_response_tokens,
+            },
         },
         "efficiency": {
             "avg_tool_calls": round(metrics.avg_tool_calls, 2),
+            "avg_response_tokens": round(metrics.avg_response_tokens, 1),
         },
         "composite_score": round(metrics.composite_score, 4),
         "by_difficulty": metrics.by_difficulty,
@@ -835,6 +874,7 @@ def _build_result_json(
             },
             "efficiency": {
                 "avg_tool_calls": metrics.avg_tool_calls,
+                "avg_response_tokens": metrics.avg_response_tokens,
             },
             "composite_score": metrics.composite_score,
         }
@@ -861,6 +901,7 @@ def _query_detail(qr: QueryResult) -> dict:
         "returned_symbols": [s for s in qr.returned_symbols[:5] if s],
         "expected_files": qr.expected_files,
         "expected_symbols": qr.expected_symbols,
+        "response_tokens": qr.response_tokens,
     }
     if qr.error:
         entry["error"] = qr.error

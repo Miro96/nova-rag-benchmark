@@ -451,6 +451,8 @@ def compute_metrics(
     ingest_total_files: int = 0,
     index_size_mb: float = 0.0,
     ram_peak_mb: float = 0.0,
+    *,
+    include_tokens_in_score: bool = False,
 ) -> BenchmarkMetrics:
     """Compute all metrics from query results."""
     latency_stats = compute_latency_stats([r.latency_ms for r in results])
@@ -549,6 +551,8 @@ def compute_metrics(
         p95_latency_ms=metrics.query_latency_p95_ms,
         ram_peak_mb=metrics.ram_peak_mb,
         index_size_mb=metrics.index_size_mb,
+        include_tokens=include_tokens_in_score,
+        avg_response_tokens=metrics.avg_response_tokens,
     )
 
     return metrics
