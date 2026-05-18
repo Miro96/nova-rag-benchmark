@@ -189,6 +189,7 @@ async def run_benchmark(
     tokenizer_name: str = "tiktoken",
     token_encoding: str | None = None,
     include_tokens_in_score: bool = False,
+    include_chunk_in_score: bool = False,
 ) -> dict:
     """Run the full benchmark pipeline."""
     run_id = str(uuid.uuid4())
@@ -344,6 +345,7 @@ async def run_benchmark(
                             index_size_mb=index_size_mb,
                             ram_peak_mb=0.0,
                             include_tokens_in_score=include_tokens_in_score,
+                            include_chunk_in_score=include_chunk_in_score,
                         )
                     )
         else:
@@ -437,6 +439,7 @@ async def run_benchmark(
                         index_size_mb=index_size_mb,
                         ram_peak_mb=0.0,
                         include_tokens_in_score=include_tokens_in_score,
+                        include_chunk_in_score=include_chunk_in_score,
                     )
                 )
     finally:
@@ -469,6 +472,7 @@ async def run_benchmark(
         index_size_mb=index_size_mb,
         ram_peak_mb=ram_peak,
         include_tokens_in_score=include_tokens_in_score,
+        include_chunk_in_score=include_chunk_in_score,
     )
 
     # Replace top-level (and breakdown) numeric values with the median across
@@ -497,6 +501,7 @@ async def run_benchmark(
         baseline_result=baseline_result,
         tokenizer_name=resolved_tokenizer_name,
         include_tokens_in_score=include_tokens_in_score,
+        include_chunk_in_score=include_chunk_in_score,
     )
     return result
 
@@ -798,6 +803,7 @@ def _build_result_json(
     server_info: dict[str, str] | None = None,
     tokenizer_name: str = "tiktoken",
     include_tokens_in_score: bool = False,
+    include_chunk_in_score: bool = False,
 ) -> dict:
     # Resolve server name/version: prefer the MCP initialize handshake,
     # fall back to the preset config.

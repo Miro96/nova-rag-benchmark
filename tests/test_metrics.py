@@ -1855,3 +1855,175 @@ class TestExistingMetricsUnchangedByChunk:
         assert m_no.composite_score == m_with.composite_score
         # chunk_hit_at_5 differs (2 with expected_content, 1 hit → 0.5)
         assert m_with.chunk_hit_at_5 == pytest.approx(0.5)
+
+
+# ============================================================================
+# Chunk composite score
+# ============================================================================
+
+
+class TestChunkCompositeScoreWeights:
+    """VAL-CLI-003: chunk weight set sums to 1.0."""
+
+    def test_chunk_weights_sum_to_one(self):
+        from rag_bench.metrics import COMPOSITE_WEIGHTS_WITH_CHUNK
+        total = sum(COMPOSITE_WEIGHTS_WITH_CHUNK.values())
+        assert total == pytest.approx(1.0, abs=1e-9), (
+            f"COMPOSITE_WEIGHTS_WITH_CHUNK sum to {total}, not 1.0"
+        )
+
+    def test_chunk_weights_have_correct_keys(self):
+        from rag_bench.metrics import COMPOSITE_WEIGHTS_WITH_CHUNK
+        expected_keys = {
+            "hit_at_5", "symbol_hit_at_5", "mrr",
+            "tool_score", "latency_score", "resource_score",
+            "token_score", "chunk_score",
+        }
+        assert set(COMPOSITE_WEIGHTS_WITH_CHUNK.keys()) == expected_keys
+
+    def test_chunk_weights_match_documented_values(self):
+        from rag_bench.metrics import COMPOSITE_WEIGHTS_WITH_CHUNK
+        expected = {
+            "hit_at_5": 0.26,
+            "symbol_hit_at_5": 0.14,
+            "mrr": 0.14,
+            "tool_score": 0.13,
+            "latency_score": 0.12,
+            "resource_score": 0.09,
+            "token_score": 0.04,
+            "chunk_score": 0.08,
+        }
+        for key, val in expected.items():
+            assert COMPOSITE_WEIGHTS_WITH_CHUNK[key] == pytest.approx(val, abs=1e-9), (
+                f"{key}: expected {val}, got {COMPOSITE_WEIGHTS_WITH_CHUNK[key]}"
+            )
+
+
+class TestChunkCompositeScoreLegacy:
+    """VAL-CLI-002: include_chunk=False preserves legacy score."""
+
+    def test_include_chunk_false_matches_legacy(self):
+        scenarios = [
+            (0.5, 0.4, 0.6, 1.0, 200.0, 300.0, 20.0),
+            (1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0, 10.0, 10000.0, 10000.0, 10000.0),
+            (0.3, 0.2, 0.1, 5.0, 500.0, 1000.0, 500.0),
+        ]
+        for (h5, sh5, mrr, tc, p95, ram, idx) in scenarios:
+            legacy = compute_composite_score(
+                hit_at_5=h5, symbol_hit_at_5=sh5, mrr=mrr,
+                avg_tool_calls=tc, p95_latency_ms=p95,
+                ram_peak_mb=ram, index_size_mb=idx,
+            )
+            with_chunk_false = compute_composite_score(
+                hit_at_5=h5, symbol_hit_at_5=sh5, mrr=mrr,
+                avg_tool_calls=tc, p95_latency_ms=p95,
+                ram_peak_mb=ram, index_size_mb=idx,
+                include_chunk=False,
+            )
+            assert legacy == pytest.approx(with_chunk_false, abs=1e-9), (
+                f"include_chunk=False differs from legacy for {h5=} {sh5=} {mrr=}"
+            )
+
+    def test_default_call_matches_legacy(self):
+        score_legacy = compute_composite_score(
+            hit_at_5=0.5, symbol_hit_at_5=0.4, mrr=0.6,
+            avg_tool_calls=1.0, p95_latency_ms=200.0,
+            ram_peak_mb=300.0, index_size_mb=20.0,
+        )
+        score_default = compute_composite_score(
+            hit_at_5=0.5, symbol_hit_at_5=0.4, mrr=0.6,
+            avg_tool_calls=1.0, p95_latency_ms=200.0,
+            ram_peak_mb=300.0, index_size_mb=20.0,
+            include_chunk=False,
+        )
+        assert score_legacy == pytest.approx(score_default, abs=1e-9)
+
+    def test_include_chunk_false_extra_kwarg_ignored(self):
+        score_no_extra = compute_composite_score(
+            hit_at_5=0.5, symbol_hit_at_5=0.4, mrr=0.6,
+            avg_tool_calls=1.0, p95_latency_ms=200.0,
+            ram_peak_mb=300.0, index_size_mb=20.0,
+            include_chunk=False,
+        )
+        score_with_extra = compute_composite_score(
+            hit_at_5=0.5, symbol_hit_at_5=0.4, mrr=0.6,
+            avg_tool_calls=1.0, p95_latency_ms=200.0,
+            ram_peak_mb=300.0, index_size_mb=20.0,
+            include_chunk=False,
+            chunk_hit_at_5=0.45,
+        )
+        assert score_no_extra == pytest.approx(score_with_extra, abs=1e-9)
+
+
+class TestChunkCompositeScoreEnabled:
+    """VAL-CLI-003: include_chunk=True uses chunk weights."""
+
+    def test_include_chunk_true_uses_different_weights(self):
+        legacy = compute_composite_score(
+            hit_at_5=0.5, symbol_hit_at_5=0.4, mrr=0.6,
+            avg_tool_calls=1.0, p95_latency_ms=200.0,
+            ram_peak_mb=300.0, index_size_mb=20.0,
+        )
+        with_chunk = compute_composite_score(
+            hit_at_5=0.5, symbol_hit_at_5=0.4, mrr=0.6,
+            avg_tool_calls=1.0, p95_latency_ms=200.0,
+            ram_peak_mb=300.0, index_size_mb=20.0,
+            include_chunk=True,
+            chunk_hit_at_5=0.45,
+        )
+        assert abs(legacy - with_chunk) > 1e-6
+
+    def test_include_chunk_true_score_in_range(self):
+        score = compute_composite_score(
+            hit_at_5=0.5, symbol_hit_at_5=0.4, mrr=0.6,
+            avg_tool_calls=1.0, p95_latency_ms=200.0,
+            ram_peak_mb=300.0, index_size_mb=20.0,
+            include_chunk=True,
+            chunk_hit_at_5=0.45,
+        )
+        assert 0.0 < score < 1.0
+
+    def test_chunk_component_affects_score(self):
+        base = dict(
+            hit_at_5=0.5, symbol_hit_at_5=0.4, mrr=0.6,
+            avg_tool_calls=1.0, p95_latency_ms=200.0,
+            ram_peak_mb=300.0, index_size_mb=20.0,
+            include_chunk=True,
+        )
+        s_low = compute_composite_score(chunk_hit_at_5=0.0, **base)
+        s_high = compute_composite_score(chunk_hit_at_5=1.0, **base)
+        assert s_high > s_low, (
+            f"Higher chunk_hit_at_5 should produce larger composite: "
+            f"0.0 -> {s_low}, 1.0 -> {s_high}"
+        )
+
+    def test_compute_metrics_with_chunk_flag(self):
+        results = [
+            _make_qr(
+                returned_files=["src/app.py"],
+                expected_files=["src/app.py"],
+                returned_symbols=["MyClass"],
+                expected_symbols=["MyClass"],
+                latency_ms=100,
+            ),
+            _make_qr(
+                returned_files=["wrong.py"],
+                expected_files=["src/config.py"],
+                returned_symbols=["OtherClass"],
+                expected_symbols=["Config"],
+                latency_ms=200,
+            ),
+        ]
+        # Add chunk data
+        results[0].expected_content = ["class App"]
+        results[0].returned_contents = ["class App: ..."]
+        results[0].found_chunk = True
+
+        m_no_chunk = compute_metrics(results, include_chunk_in_score=False)
+        m_with_chunk = compute_metrics(results, include_chunk_in_score=True)
+
+        # Scores must differ when include_chunk_in_score changes
+        assert abs(m_no_chunk.composite_score - m_with_chunk.composite_score) > 1e-9
+        # With include_chunk_in_score=True, chunk_hit_at_5 must be in range
+        assert 0.0 <= m_with_chunk.composite_score <= 1.0

@@ -52,9 +52,15 @@ def cli():
     is_flag=True,
     help="Include token efficiency in the composite score.",
 )
+@click.option(
+    "--include-chunk-score",
+    is_flag=True,
+    help="Include chunk-level retrieval accuracy in the composite score.",
+)
 def run(preset, config, command, transport, repo, ab_baseline, top_k,
         replicates, clean_index, output,
-        tokenizer, token_encoding, include_tokens_in_score):
+        tokenizer, token_encoding, include_tokens_in_score,
+        include_chunk_score):
     """Run benchmark on a RAG server."""
     from rag_bench.runner import run_benchmark
 
@@ -77,6 +83,7 @@ def run(preset, config, command, transport, repo, ab_baseline, top_k,
             tokenizer_name=tokenizer,
             token_encoding=token_encoding,
             include_tokens_in_score=include_tokens_in_score,
+            include_chunk_in_score=include_chunk_score,
         ))
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
@@ -119,8 +126,14 @@ def run(preset, config, command, transport, repo, ab_baseline, top_k,
     is_flag=True,
     help="Include token efficiency in the composite score.",
 )
+@click.option(
+    "--include-chunk-score",
+    is_flag=True,
+    help="Include chunk-level retrieval accuracy in the composite score.",
+)
 def compare(presets, repo, top_k, replicates, clean_index, output,
-            tokenizer, token_encoding, include_tokens_in_score):
+            tokenizer, token_encoding, include_tokens_in_score,
+            include_chunk_score):
     """Compare multiple RAG MCP servers."""
     from rag_bench.runner import run_benchmark
 
@@ -141,6 +154,7 @@ def compare(presets, repo, top_k, replicates, clean_index, output,
             tokenizer_name=tokenizer,
             token_encoding=token_encoding,
             include_tokens_in_score=include_tokens_in_score,
+            include_chunk_in_score=include_chunk_score,
         ))
         results.append(result)
 

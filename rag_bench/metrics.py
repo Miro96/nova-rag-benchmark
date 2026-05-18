@@ -433,6 +433,19 @@ COMPOSITE_WEIGHTS_WITH_TOKENS: dict[str, float] = {
     "token_score": 0.09,
 }
 
+#: Rebalanced weights when chunk-level accuracy is included in the composite
+#: score.  Sum is exactly 1.0.
+COMPOSITE_WEIGHTS_WITH_CHUNK: dict[str, float] = {
+    "hit_at_5": 0.26,
+    "symbol_hit_at_5": 0.14,
+    "mrr": 0.14,
+    "tool_score": 0.13,
+    "latency_score": 0.12,
+    "resource_score": 0.09,
+    "token_score": 0.04,
+    "chunk_score": 0.08,
+}
+
 
 def compute_composite_score(
     hit_at_5: float,
@@ -445,32 +458,41 @@ def compute_composite_score(
     *,
     include_tokens: bool = False,
     avg_response_tokens: float = 0.0,
+    include_chunk: bool = False,
+    chunk_hit_at_5: float = 0.0,
 ) -> float:
-    """Combine quality, efficiency, resource, and (optionally) token metrics
-    into a single score.
+    """Combine quality, efficiency, resource, and (optionally) token and chunk
+    metrics into a single score.
 
-    When *include_tokens* is ``False`` (default) the legacy formula and
-    ``COMPOSITE_WEIGHTS`` are used unchanged for full back-compat.
+    When *include_tokens* is ``False`` and *include_chunk* is ``False``
+    (the defaults) the legacy formula and ``COMPOSITE_WEIGHTS`` are used
+    unchanged for full back-compat.
 
-    When *include_tokens* is ``True`` the formula additionally mixes in a
-    token-efficiency component
+    When *include_tokens* is ``True`` (and *include_chunk* ``False``) the
+    formula additionally mixes in a token-efficiency component
 
         ``token_score = 1 / (1 + avg_response_tokens / 1000)``
 
-    and rebalances the weights to ``COMPOSITE_WEIGHTS_WITH_TOKENS``.  A
-    lower *avg_response_tokens* produces a strictly larger composite score
-    (fewer tokens = better).
+    and rebalances the weights to ``COMPOSITE_WEIGHTS_WITH_TOKENS``.
+
+    When *include_chunk* is ``True`` the formula uses
+    ``COMPOSITE_WEIGHTS_WITH_CHUNK``, mixing the chunk_hit_at_5 component
+    (weight 0.08) with rebalanced quality, efficiency, resource, and token
+    weights summing to 1.0.  The token component is always included when
+    *include_chunk* is ``True``.
 
     All components:
 
     * ``hit_at_5`` — primary retrieval quality.
     * ``symbol_hit_at_5`` — symbol-level retrieval quality.
     * ``mrr`` — ranking quality.
+    * ``chunk_hit_at_5`` — chunk-level retrieval quality (when *include_chunk*
+      is ``True``).
     * efficiency from ``avg_tool_calls`` (1 / (1 + calls); fewer is better).
     * latency from ``p95_latency_ms`` (1 / (1 + p95_s); faster is better).
     * resources from RAM + index size (1 / (1 + (ram + idx) / 1000)).
-    * tokens from ``avg_response_tokens`` (only when *include_tokens* is
-      ``True``).
+    * tokens from ``avg_response_tokens`` (when *include_tokens* or
+      *include_chunk* is ``True``).
 
     The active weight set always sums to 1.0, so the result lies in (0, 1]
     when at least one component is positive.
@@ -480,7 +502,20 @@ def compute_composite_score(
     resource_total = max(0.0, ram_peak_mb) + max(0.0, index_size_mb)
     resource_score = 1.0 / (1.0 + resource_total / 1000.0)
 
-    if include_tokens:
+    if include_chunk:
+        weights = COMPOSITE_WEIGHTS_WITH_CHUNK
+        token_score = 1.0 / (1.0 + max(0.0, avg_response_tokens) / 1000.0)
+        return (
+            weights["hit_at_5"] * hit_at_5
+            + weights["symbol_hit_at_5"] * symbol_hit_at_5
+            + weights["mrr"] * mrr
+            + weights["chunk_score"] * chunk_hit_at_5
+            + weights["tool_score"] * tool_score
+            + weights["latency_score"] * latency_score
+            + weights["resource_score"] * resource_score
+            + weights["token_score"] * token_score
+        )
+    elif include_tokens:
         weights = COMPOSITE_WEIGHTS_WITH_TOKENS
         token_score = 1.0 / (1.0 + max(0.0, avg_response_tokens) / 1000.0)
         return (
@@ -511,6 +546,7 @@ def compute_metrics(
     ram_peak_mb: float = 0.0,
     *,
     include_tokens_in_score: bool = False,
+    include_chunk_in_score: bool = False,
 ) -> BenchmarkMetrics:
     """Compute all metrics from query results."""
     latency_stats = compute_latency_stats([r.latency_ms for r in results])
@@ -612,6 +648,8 @@ def compute_metrics(
         index_size_mb=metrics.index_size_mb,
         include_tokens=include_tokens_in_score,
         avg_response_tokens=metrics.avg_response_tokens,
+        include_chunk=include_chunk_in_score,
+        chunk_hit_at_5=metrics.chunk_hit_at_5,
     )
 
     return metrics
