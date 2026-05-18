@@ -874,9 +874,9 @@ class TestHtmlTokenColumns:
         response = test_client.get("/")
         assert response.status_code == 200
         html = response.text
-        # Verify the empty state colspan accounts for new columns (was 13, now 17)
-        assert 'colspan="17"' in html, (
-            "Empty state colspan should be 17 to account for new token and chunk columns"
+        # Verify the empty state colspan accounts for new columns (was 13, now 19)
+        assert 'colspan="19"' in html, (
+            "Empty state colspan should be 19 to account for all columns"
         )
         # Verify token column headers are present
         assert "Avg Tokens" in html
@@ -1041,6 +1041,172 @@ class TestHtmlTooltips:
                 f"Duplicate tooltip for '{sort_key}': '{title_text}'"
             )
             seen_titles.add(normalized)
+
+
+# ---------------------------------------------------------------------------
+# VAL-UI-003, VAL-UI-004, VAL-UI-005: Breakdown columns
+# ---------------------------------------------------------------------------
+
+class TestHtmlBreakdownColumns:
+    """VAL-UI-003, VAL-UI-004, VAL-UI-005: Difficulty/type breakdown columns."""
+
+    def test_html_contains_breakdown_column_headers(self, test_client):
+        """GET / returns HTML with 'By Difficulty' and 'By Type' headers."""
+        response = test_client.get("/")
+        assert response.status_code == 200
+        html = response.text
+        assert "By Difficulty" in html, (
+            "HTML should contain 'By Difficulty' column header"
+        )
+        assert "By Type" in html, (
+            "HTML should contain 'By Type' column header"
+        )
+
+    def test_breakdown_columns_are_sortable(self, test_client):
+        """Breakdown column headers have data-sort attributes."""
+        response = test_client.get("/")
+        assert response.status_code == 200
+        html = response.text
+        # The breakdown columns use a client-side sort key
+        assert 'data-sort="by_difficulty"' in html, (
+            "'By Difficulty' column should be sortable"
+        )
+        assert 'data-sort="by_type"' in html, (
+            "'By Type' column should be sortable"
+        )
+
+    def test_breakdown_columns_have_tooltips(self, test_client):
+        """Breakdown column headers have descriptive tooltip titles."""
+        import re
+
+        response = test_client.get("/")
+        assert response.status_code == 200
+        html = response.text
+
+        # Check By Difficulty tooltip
+        diff_pattern = re.compile(
+            r'<th\b[^>]*\bdata-sort\s*=\s*"by_difficulty"[^>]*\btitle\s*=\s*"([^"]*)"[^>]*>',
+            re.IGNORECASE,
+        )
+        diff_match = diff_pattern.search(html)
+        assert diff_match, "'By Difficulty' column must have a title attribute"
+        diff_title = diff_match.group(1)
+        assert len(diff_title.split()) >= 10, (
+            f"'By Difficulty' tooltip must have at least 10 words, "
+            f"got {len(diff_title.split())}: '{diff_title}'"
+        )
+
+        # Check By Type tooltip
+        type_pattern = re.compile(
+            r'<th\b[^>]*\bdata-sort\s*=\s*"by_type"[^>]*\btitle\s*=\s*"([^"]*)"[^>]*>',
+            re.IGNORECASE,
+        )
+        type_match = type_pattern.search(html)
+        assert type_match, "'By Type' column must have a title attribute"
+        type_title = type_match.group(1)
+        assert len(type_title.split()) >= 10, (
+            f"'By Type' tooltip must have at least 10 words, "
+            f"got {len(type_title.split())}: '{type_title}'"
+        )
+
+    def test_colspan_updated_for_breakdown_columns(self, test_client):
+        """Empty/error state colspan is 19 (was 17, +2 for breakdown columns)."""
+        response = test_client.get("/")
+        assert response.status_code == 200
+        html = response.text
+        # Both empty state and error state have colspan="19"
+        assert 'colspan="19"' in html, (
+            "colspan should be 19 to account for breakdown columns"
+        )
+        # The old colspan should NOT be present
+        assert 'colspan="17"' not in html, (
+            "colspan 17 should no longer appear (replaced by 19)"
+        )
+
+    def test_fmt_breakdown_function_exists_in_js(self, test_client):
+        """The fmtBreakdown helper function is defined in the page script."""
+        response = test_client.get("/")
+        assert response.status_code == 200
+        html = response.text
+        assert "fmtBreakdown" in html, (
+            "fmtBreakdown JavaScript function should be defined in the page"
+        )
+
+    def test_by_difficulty_and_by_type_in_js_rendering(self, test_client):
+        """The renderTable function reads by_difficulty and by_type from entries."""
+        response = test_client.get("/")
+        assert response.status_code == 200
+        html = response.text
+        # The JS should reference these fields for rendering
+        assert "by_difficulty" in html, (
+            "JavaScript should reference by_difficulty for rendering"
+        )
+        assert "by_type" in html, (
+            "JavaScript should reference by_type for rendering"
+        )
+
+    def test_submitted_breakdown_data_appears_in_leaderboard_api(
+        self, test_client
+    ):
+        """After submitting a run with by_difficulty/by_type, they appear in API."""
+        import uuid
+
+        payload = _valid_payload(run_id=str(uuid.uuid4()))
+        payload["by_difficulty"] = {
+            "easy": {"count": 10, "hit_at_5": 0.85},
+            "medium": {"count": 10, "hit_at_5": 0.72},
+            "hard": {"count": 10, "hit_at_5": 0.55},
+        }
+        payload["by_type"] = {
+            "locate": {"count": 10, "hit_at_5": 0.90},
+            "callers": {"count": 10, "hit_at_5": 0.80},
+            "explain": {"count": 10, "hit_at_5": 0.60},
+        }
+        test_client.post("/api/submit", json=payload)
+
+        response = test_client.get("/api/leaderboard")
+        assert response.status_code == 200
+        entries = response.json()["entries"]
+        matching = [e for e in entries if e["run_id"] == payload["run_id"]]
+        assert len(matching) == 1
+        entry = matching[0]
+
+        # by_difficulty should be a dict with expected keys
+        diff = entry.get("by_difficulty")
+        assert diff is not None, "by_difficulty should be present in API response"
+        if isinstance(diff, str):
+            import json
+            diff = json.loads(diff)
+        assert "easy" in diff, "by_difficulty should contain 'easy' key"
+        assert diff["easy"]["hit_at_5"] == 0.85
+
+        # by_type should be a dict with expected keys
+        typ = entry.get("by_type")
+        assert typ is not None, "by_type should be present in API response"
+        if isinstance(typ, str):
+            import json
+            typ = json.loads(typ)
+        assert "locate" in typ, "by_type should contain 'locate' key"
+        assert typ["locate"]["hit_at_5"] == 0.90
+
+    def test_empty_breakdown_renders_without_crash(self, test_client):
+        """Entries without breakdown data (legacy) render without crash."""
+        import uuid
+
+        # Submit a payload without any breakdown data
+        payload = _valid_payload(run_id=str(uuid.uuid4()))
+        payload.pop("by_difficulty", None)
+        payload.pop("by_type", None)
+        test_client.post("/api/submit", json=payload)
+
+        response = test_client.get("/api/leaderboard")
+        assert response.status_code == 200
+        entries = response.json()["entries"]
+        assert len(entries) >= 1
+        # The entry should still have the fields (from server round-trip)
+        entry = entries[0]
+        # by_difficulty could be {} or missing — either is fine
+        assert "run_id" in entry
 
 
 # ---------------------------------------------------------------------------

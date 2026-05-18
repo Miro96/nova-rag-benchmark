@@ -132,6 +132,8 @@
                 <option value="avg_response_tokens">Avg Tokens</option>
                 <option value="p95_response_tokens">P95 Tokens</option>
                 <option value="avg_llm_tokens">Avg LLM Tokens</option>
+                <option value="by_difficulty">By Difficulty</option>
+                <option value="by_type">By Type</option>
             </select>
         </label>
         <button id="compareBtn" onclick="toggleChart()">Compare Selected</button>
@@ -154,6 +156,8 @@
                 <th data-sort="ingest_total_sec" title="Total time in seconds to clone and index the entire repository before running any benchmark queries">Ingest</th>
                 <th data-sort="ram_peak_mb" title="Peak resident memory usage in megabytes during query execution across all benchmark queries">RAM</th>
                 <th data-sort="composite_score" title="Composite score from 0 to 1 combining retrieval quality, query speed, and resource efficiency into a single rank">Score</th>
+                <th data-sort="by_difficulty" title="Breakdown of Hit@5 retrieval accuracy by query difficulty level — E=easy, M=medium, H=hard — showing how well the RAG server performs on simpler versus more complex code questions">By Difficulty</th>
+                <th data-sort="by_type" title="Breakdown of Hit@5 retrieval accuracy by query category — loc=locate, cal=callers, exp=explain, imp=impact — showing how the RAG server handles different kinds of code understanding questions">By Type</th>
                 <th data-sort="avg_response_tokens" title="Average number of output tokens returned by the MCP server per query across all benchmark queries">Avg Tokens</th>
                 <th data-sort="p95_response_tokens" title="95th percentile of output tokens — 95% of queries returned fewer tokens than this count">P95 Tokens</th>
                 <th data-sort="avg_llm_tokens" title="Average number of tokens consumed by the underlying language model when generating responses for each query">Avg LLM Tokens</th>
@@ -179,22 +183,35 @@
 
         async function loadData() {
             const sort = document.getElementById('sortSelect').value;
-            const order = ['query_latency_p50_ms', 'query_latency_p95_ms', 'ingest_total_sec', 'ram_peak_mb',
-                           'avg_response_tokens', 'p95_response_tokens', 'avg_llm_tokens'].includes(sort) ? 'asc' : 'desc';
+            const isBreakdown = sort === 'by_difficulty' || sort === 'by_type';
+            const order = isBreakdown ? 'desc' : (
+                ['query_latency_p50_ms', 'query_latency_p95_ms', 'ingest_total_sec', 'ram_peak_mb',
+                 'avg_response_tokens', 'p95_response_tokens', 'avg_llm_tokens'].includes(sort) ? 'asc' : 'desc');
             try {
-                const res = await fetch(`/api/leaderboard?sort_by=${sort}&order=${order}&limit=50`);
+                // For breakdown columns, fetch unsorted then sort client-side
+                const serverSort = isBreakdown ? 'composite_score' : sort;
+                const serverOrder = isBreakdown ? 'desc' : order;
+                const res = await fetch(`/api/leaderboard?sort_by=${serverSort}&order=${serverOrder}&limit=50`);
                 const data = await res.json();
                 entries = data.entries || [];
+                if (isBreakdown) {
+                    entries.sort((a, b) => {
+                        const ka = breakdownSortKey(a[sort]);
+                        const kb = breakdownSortKey(b[sort]);
+                        if (currentOrder === 'asc') return ka - kb;
+                        return kb - ka;
+                    });
+                }
                 renderTable();
             } catch (e) {
-                document.getElementById('tbody').innerHTML = '<tr><td colspan="17" class="empty">Failed to load data</td></tr>';
+                document.getElementById('tbody').innerHTML = '<tr><td colspan="19" class="empty">Failed to load data</td></tr>';
             }
         }
 
         function renderTable() {
             const tbody = document.getElementById('tbody');
             if (!entries.length) {
-                tbody.innerHTML = '<tr><td colspan="17" class="empty">No benchmark results yet. Run: rag-bench run --preset nova-rag</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="19" class="empty">No benchmark results yet. Run: rag-bench run --preset nova-rag</td></tr>';
                 return;
             }
 
@@ -223,6 +240,8 @@
                     <td class="metric">${e.ingest_total_sec.toFixed(1)}s</td>
                     <td class="metric">${e.ram_peak_mb.toFixed(0)} MB</td>
                     <td class="score ${scoreClass(e.composite_score)}">${e.composite_score.toFixed(4)}</td>
+                    <td class="metric">${fmtBreakdown(e.by_difficulty)}</td>
+                    <td class="metric">${fmtBreakdown(e.by_type)}</td>
                     <td class="metric">${fmtTokens(e.avg_response_tokens)}</td>
                     <td class="metric">${fmtTokens(e.p95_response_tokens)}</td>
                     <td class="metric">${fmtTokens(e.avg_llm_tokens)}</td>
@@ -236,6 +255,32 @@
         function fmtTokens(v) {
             if (v == null || v === 0) return '0';
             return Math.round(v).toLocaleString();
+        }
+
+        function fmtBreakdown(obj) {
+            if (!obj || typeof obj === 'string' && obj === '{}') return '-';
+            if (typeof obj === 'string') {
+                try { obj = JSON.parse(obj); } catch (e) { return '-'; }
+            }
+            if (typeof obj !== 'object' || Object.keys(obj).length === 0) return '-';
+            const abbr = { easy: 'E', medium: 'M', hard: 'H', locate: 'loc', callers: 'cal', explain: 'exp', impact: 'imp' };
+            return Object.entries(obj).map(([k, v]) => {
+                const key = abbr[k] || k;
+                const val = v && v.hit_at_5 != null ? (v.hit_at_5 * 100).toFixed(0) + '%' : '-';
+                return key + ':' + val;
+            }).join(' ');
+        }
+
+        function breakdownSortKey(obj) {
+            // Compute a sort key from the breakdown object: average of all hit_at_5 values
+            if (!obj) return -1;
+            if (typeof obj === 'string') {
+                try { obj = JSON.parse(obj); } catch (e) { return -1; }
+            }
+            if (typeof obj !== 'object' || Object.keys(obj).length === 0) return -1;
+            const vals = Object.values(obj).map(v => v.hit_at_5).filter(v => v != null);
+            if (vals.length === 0) return -1;
+            return vals.reduce((a, b) => a + b, 0) / vals.length;
         }
 
         function onSelect(cb) {
@@ -310,7 +355,15 @@
         // Header sort
         document.querySelectorAll('th[data-sort]').forEach(th => {
             th.addEventListener('click', () => {
-                document.getElementById('sortSelect').value = th.dataset.sort;
+                const sortKey = th.dataset.sort;
+                const isBreakdown = sortKey === 'by_difficulty' || sortKey === 'by_type';
+                if (isBreakdown && currentSort === sortKey) {
+                    currentOrder = currentOrder === 'asc' ? 'desc' : 'asc';
+                } else {
+                    currentOrder = 'desc';
+                }
+                currentSort = sortKey;
+                document.getElementById('sortSelect').value = sortKey;
                 loadData();
             });
         });
