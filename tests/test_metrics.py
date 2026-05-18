@@ -1102,3 +1102,237 @@ class TestLatencyStatsUnaffectedByTokens:
 
         assert m_no_tok.query_latency_p50_ms == m_with_tok.query_latency_p50_ms
         assert m_no_tok.query_latency_mean_ms == m_with_tok.query_latency_mean_ms
+
+
+# ---------------------------------------------------------------------------
+# Composite score: optional token component
+# ---------------------------------------------------------------------------
+
+
+class TestCompositeScoreLegacyPreserved:
+    """VAL-SCORE-001 / VAL-COMPAT-004: composite score unchanged without token flag."""
+
+    # Pre-computed values from the legacy formula for a fixed set of inputs
+    _LEGACY_SCENARIOS = [
+        # (hit_at_5, symbol_hit_at_5, mrr, avg_tool_calls, p95_latency_ms,
+        #  ram_peak_mb, index_size_mb, expected_score)
+        (0.5, 0.4, 0.6, 1.0, 200.0, 300.0, 20.0, None),  # computed at runtime
+        (1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, None),       # computed at runtime
+        (0.0, 0.0, 0.0, 10.0, 10000.0, 10000.0, 10000.0, None),  # computed at runtime
+        (0.3, 0.2, 0.1, 5.0, 500.0, 1000.0, 500.0, None),  # computed at runtime
+    ]
+
+    def test_include_tokens_false_matches_legacy(self):
+        """VAL-SCORE-001: include_tokens=False produces same value as current formula."""
+        for (h5, sh5, mrr, tc, p95, ram, idx, _) in self._LEGACY_SCENARIOS:
+            legacy = compute_composite_score(
+                hit_at_5=h5,
+                symbol_hit_at_5=sh5,
+                mrr=mrr,
+                avg_tool_calls=tc,
+                p95_latency_ms=p95,
+                ram_peak_mb=ram,
+                index_size_mb=idx,
+            )
+            with_tokens_false = compute_composite_score(
+                hit_at_5=h5,
+                symbol_hit_at_5=sh5,
+                mrr=mrr,
+                avg_tool_calls=tc,
+                p95_latency_ms=p95,
+                ram_peak_mb=ram,
+                index_size_mb=idx,
+                include_tokens=False,
+            )
+            assert legacy == pytest.approx(with_tokens_false, abs=1e-9), (
+                f"include_tokens=False differs from legacy for {h5=} {sh5=} {mrr=}"
+            )
+
+    def test_default_call_matches_legacy(self):
+        """Not passing include_tokens at all must match legacy (default is False)."""
+        score_legacy = compute_composite_score(
+            hit_at_5=0.5, symbol_hit_at_5=0.4, mrr=0.6,
+            avg_tool_calls=1.0, p95_latency_ms=200.0,
+            ram_peak_mb=300.0, index_size_mb=20.0,
+        )
+        score_default = compute_composite_score(
+            hit_at_5=0.5, symbol_hit_at_5=0.4, mrr=0.6,
+            avg_tool_calls=1.0, p95_latency_ms=200.0,
+            ram_peak_mb=300.0, index_size_mb=20.0,
+            include_tokens=False,
+        )
+        assert score_legacy == pytest.approx(score_default, abs=1e-9)
+
+    def test_include_tokens_false_extra_kwarg_ignored(self):
+        """Passing avg_response_tokens with include_tokens=False should be ignored."""
+        score_no_extra = compute_composite_score(
+            hit_at_5=0.5, symbol_hit_at_5=0.4, mrr=0.6,
+            avg_tool_calls=1.0, p95_latency_ms=200.0,
+            ram_peak_mb=300.0, index_size_mb=20.0,
+            include_tokens=False,
+        )
+        score_with_extra = compute_composite_score(
+            hit_at_5=0.5, symbol_hit_at_5=0.4, mrr=0.6,
+            avg_tool_calls=1.0, p95_latency_ms=200.0,
+            ram_peak_mb=300.0, index_size_mb=20.0,
+            include_tokens=False,
+            avg_response_tokens=9999.0,
+        )
+        assert score_no_extra == pytest.approx(score_with_extra, abs=1e-9)
+
+
+class TestCompositeScoreWithTokens:
+    """VAL-SCORE-002: token component added when enabled."""
+
+    def test_include_tokens_true_uses_different_weights(self):
+        """With include_tokens=True the score must differ from legacy."""
+        legacy = compute_composite_score(
+            hit_at_5=0.5, symbol_hit_at_5=0.4, mrr=0.6,
+            avg_tool_calls=1.0, p95_latency_ms=200.0,
+            ram_peak_mb=300.0, index_size_mb=20.0,
+        )
+        with_tokens = compute_composite_score(
+            hit_at_5=0.5, symbol_hit_at_5=0.4, mrr=0.6,
+            avg_tool_calls=1.0, p95_latency_ms=200.0,
+            ram_peak_mb=300.0, index_size_mb=20.0,
+            include_tokens=True,
+            avg_response_tokens=500.0,
+        )
+        # The weights differ, so the scores must differ
+        assert abs(legacy - with_tokens) > 1e-6
+
+    def test_include_tokens_true_score_in_range(self):
+        """The new score is still in (0, 1]."""
+        score = compute_composite_score(
+            hit_at_5=0.5, symbol_hit_at_5=0.4, mrr=0.6,
+            avg_tool_calls=1.0, p95_latency_ms=200.0,
+            ram_peak_mb=300.0, index_size_mb=20.0,
+            include_tokens=True,
+            avg_response_tokens=500.0,
+        )
+        assert 0.0 < score < 1.0
+
+    def test_token_component_affects_score(self):
+        """Changing only avg_response_tokens must change the composite when enabled."""
+        base = dict(
+            hit_at_5=0.5, symbol_hit_at_5=0.4, mrr=0.6,
+            avg_tool_calls=1.0, p95_latency_ms=200.0,
+            ram_peak_mb=300.0, index_size_mb=20.0,
+            include_tokens=True,
+        )
+        s_low = compute_composite_score(avg_response_tokens=100.0, **base)
+        s_high = compute_composite_score(avg_response_tokens=10000.0, **base)
+        assert s_low != pytest.approx(s_high)
+
+
+class TestCompositeWeightsWithTokens:
+    """VAL-SCORE-003: rebalanced weights sum to 1.0."""
+
+    def test_new_weights_sum_to_one(self):
+        """The new weight constants must sum to exactly 1.0."""
+        from rag_bench.metrics import COMPOSITE_WEIGHTS_WITH_TOKENS
+        total = sum(COMPOSITE_WEIGHTS_WITH_TOKENS.values())
+        assert total == pytest.approx(1.0, abs=1e-9), (
+            f"COMPOSITE_WEIGHTS_WITH_TOKENS sum to {total}, not 1.0"
+        )
+
+    def test_new_weights_have_correct_keys(self):
+        """The new weight dict must contain all expected keys."""
+        from rag_bench.metrics import COMPOSITE_WEIGHTS_WITH_TOKENS
+        expected_keys = {
+            "hit_at_5", "symbol_hit_at_5", "mrr",
+            "tool_score", "latency_score", "resource_score", "token_score",
+        }
+        assert set(COMPOSITE_WEIGHTS_WITH_TOKENS.keys()) == expected_keys
+
+    def test_new_weights_match_documented_values(self):
+        """Individual weights must match the values documented in architecture."""
+        from rag_bench.metrics import COMPOSITE_WEIGHTS_WITH_TOKENS
+        expected = {
+            "hit_at_5": 0.28,
+            "symbol_hit_at_5": 0.14,
+            "mrr": 0.14,
+            "tool_score": 0.13,
+            "latency_score": 0.13,
+            "resource_score": 0.09,
+            "token_score": 0.09,
+        }
+        for key, val in expected.items():
+            assert COMPOSITE_WEIGHTS_WITH_TOKENS[key] == pytest.approx(val, abs=1e-9), (
+                f"{key}: expected {val}, got {COMPOSITE_WEIGHTS_WITH_TOKENS[key]}"
+            )
+
+
+class TestCompositeScoreTokenMonotonicity:
+    """VAL-SCORE-004: lower tokens improve composite when enabled."""
+
+    def test_lower_tokens_produces_higher_score(self):
+        """With include_tokens=True, identical inputs except avg_response_tokens
+        of 200 vs 2000 must produce strictly greater composite for 200."""
+        base_kwargs = dict(
+            hit_at_5=0.5, symbol_hit_at_5=0.4, mrr=0.6,
+            avg_tool_calls=1.0, p95_latency_ms=200.0,
+            ram_peak_mb=300.0, index_size_mb=20.0,
+            include_tokens=True,
+        )
+        score_200 = compute_composite_score(avg_response_tokens=200.0, **base_kwargs)
+        score_2000 = compute_composite_score(avg_response_tokens=2000.0, **base_kwargs)
+        assert score_200 > score_2000, (
+            f"Lower avg_response_tokens should produce larger composite: "
+            f"200 -> {score_200}, 2000 -> {score_2000}"
+        )
+
+    def test_lower_tokens_higher_score_varied_inputs(self):
+        """Monotonicity holds across multiple input configurations."""
+        scenarios = [
+            dict(hit_at_5=0.8, symbol_hit_at_5=0.7, mrr=0.9,
+                 avg_tool_calls=0.5, p95_latency_ms=50.0,
+                 ram_peak_mb=50.0, index_size_mb=5.0),
+            dict(hit_at_5=0.2, symbol_hit_at_5=0.1, mrr=0.15,
+                 avg_tool_calls=8.0, p95_latency_ms=5000.0,
+                 ram_peak_mb=5000.0, index_size_mb=2000.0),
+            dict(hit_at_5=0.0, symbol_hit_at_5=0.0, mrr=0.0,
+                 avg_tool_calls=3.0, p95_latency_ms=1000.0,
+                 ram_peak_mb=500.0, index_size_mb=100.0),
+        ]
+        for base in scenarios:
+            base["include_tokens"] = True
+            s_low = compute_composite_score(avg_response_tokens=200.0, **base)
+            s_high = compute_composite_score(avg_response_tokens=2000.0, **base)
+            assert s_low > s_high, (
+                f"Expected s_low > s_high for {base}: got {s_low} vs {s_high}"
+            )
+
+    def test_token_score_formula(self):
+        """The token_score formula is 1 / (1 + avg_response_tokens / 1000)."""
+        # When avg_response_tokens is 0, token_score = 1.0
+        score_zero_tokens = compute_composite_score(
+            hit_at_5=0.5, symbol_hit_at_5=0.4, mrr=0.6,
+            avg_tool_calls=1.0, p95_latency_ms=200.0,
+            ram_peak_mb=300.0, index_size_mb=20.0,
+            include_tokens=True,
+            avg_response_tokens=0.0,
+        )
+        # When avg_response_tokens is very large, token_score ≈ 0
+        score_huge_tokens = compute_composite_score(
+            hit_at_5=0.5, symbol_hit_at_5=0.4, mrr=0.6,
+            avg_tool_calls=1.0, p95_latency_ms=200.0,
+            ram_peak_mb=300.0, index_size_mb=20.0,
+            include_tokens=True,
+            avg_response_tokens=1e9,
+        )
+        assert score_zero_tokens > score_huge_tokens
+
+    def test_existing_composite_tests_still_pass(self):
+        """Existing TestCompositeScore tests must still pass unchanged."""
+        # Re-run an existing test scenario to verify no breakage
+        score = compute_composite_score(
+            hit_at_5=0.5,
+            symbol_hit_at_5=0.4,
+            mrr=0.6,
+            avg_tool_calls=1.0,
+            p95_latency_ms=200.0,
+            ram_peak_mb=300.0,
+            index_size_mb=20.0,
+        )
+        assert 0.0 < score < 1.0

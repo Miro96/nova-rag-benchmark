@@ -363,6 +363,18 @@ COMPOSITE_WEIGHTS: dict[str, float] = {
     "resource_score": 0.10,
 }
 
+#: Rebalanced weights when token efficiency is included in the composite
+#: score.  Sum is exactly 1.0.
+COMPOSITE_WEIGHTS_WITH_TOKENS: dict[str, float] = {
+    "hit_at_5": 0.28,
+    "symbol_hit_at_5": 0.14,
+    "mrr": 0.14,
+    "tool_score": 0.13,
+    "latency_score": 0.13,
+    "resource_score": 0.09,
+    "token_score": 0.09,
+}
+
 
 def compute_composite_score(
     hit_at_5: float,
@@ -372,10 +384,26 @@ def compute_composite_score(
     p95_latency_ms: float,
     ram_peak_mb: float,
     index_size_mb: float,
+    *,
+    include_tokens: bool = False,
+    avg_response_tokens: float = 0.0,
 ) -> float:
-    """Combine quality, efficiency, and resource metrics into a single score.
+    """Combine quality, efficiency, resource, and (optionally) token metrics
+    into a single score.
 
-    All six weighted components from ``COMPOSITE_WEIGHTS`` are mixed:
+    When *include_tokens* is ``False`` (default) the legacy formula and
+    ``COMPOSITE_WEIGHTS`` are used unchanged for full back-compat.
+
+    When *include_tokens* is ``True`` the formula additionally mixes in a
+    token-efficiency component
+
+        ``token_score = 1 / (1 + avg_response_tokens / 1000)``
+
+    and rebalances the weights to ``COMPOSITE_WEIGHTS_WITH_TOKENS``.  A
+    lower *avg_response_tokens* produces a strictly larger composite score
+    (fewer tokens = better).
+
+    All components:
 
     * ``hit_at_5`` — primary retrieval quality.
     * ``symbol_hit_at_5`` — symbol-level retrieval quality.
@@ -383,25 +411,38 @@ def compute_composite_score(
     * efficiency from ``avg_tool_calls`` (1 / (1 + calls); fewer is better).
     * latency from ``p95_latency_ms`` (1 / (1 + p95_s); faster is better).
     * resources from RAM + index size (1 / (1 + (ram + idx) / 1000)).
+    * tokens from ``avg_response_tokens`` (only when *include_tokens* is
+      ``True``).
 
-    Weights sum to 1.0, so the result lies in (0, 1] when at least one
-    component is positive and is exactly 0 only when every component is 0
-    (which cannot happen in practice because the inverse-scale terms are
-    bounded above 0).
+    The active weight set always sums to 1.0, so the result lies in (0, 1]
+    when at least one component is positive.
     """
     tool_score = 1.0 / (1.0 + max(0.0, avg_tool_calls))
     latency_score = 1.0 / (1.0 + max(0.0, p95_latency_ms) / 1000.0)
     resource_total = max(0.0, ram_peak_mb) + max(0.0, index_size_mb)
     resource_score = 1.0 / (1.0 + resource_total / 1000.0)
 
-    return (
-        COMPOSITE_WEIGHTS["hit_at_5"] * hit_at_5
-        + COMPOSITE_WEIGHTS["symbol_hit_at_5"] * symbol_hit_at_5
-        + COMPOSITE_WEIGHTS["mrr"] * mrr
-        + COMPOSITE_WEIGHTS["tool_score"] * tool_score
-        + COMPOSITE_WEIGHTS["latency_score"] * latency_score
-        + COMPOSITE_WEIGHTS["resource_score"] * resource_score
-    )
+    if include_tokens:
+        weights = COMPOSITE_WEIGHTS_WITH_TOKENS
+        token_score = 1.0 / (1.0 + max(0.0, avg_response_tokens) / 1000.0)
+        return (
+            weights["hit_at_5"] * hit_at_5
+            + weights["symbol_hit_at_5"] * symbol_hit_at_5
+            + weights["mrr"] * mrr
+            + weights["tool_score"] * tool_score
+            + weights["latency_score"] * latency_score
+            + weights["resource_score"] * resource_score
+            + weights["token_score"] * token_score
+        )
+    else:
+        return (
+            COMPOSITE_WEIGHTS["hit_at_5"] * hit_at_5
+            + COMPOSITE_WEIGHTS["symbol_hit_at_5"] * symbol_hit_at_5
+            + COMPOSITE_WEIGHTS["mrr"] * mrr
+            + COMPOSITE_WEIGHTS["tool_score"] * tool_score
+            + COMPOSITE_WEIGHTS["latency_score"] * latency_score
+            + COMPOSITE_WEIGHTS["resource_score"] * resource_score
+        )
 
 
 def compute_metrics(
