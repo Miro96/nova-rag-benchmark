@@ -123,6 +123,7 @@
                 <option value="hit_at_1">Hit@1</option>
                 <option value="hit_at_5">Hit@5</option>
                 <option value="symbol_hit_at_5">Symbol Hit@5</option>
+                <option value="chunk_hit_at_5">Chunk Hit@5</option>
                 <option value="mrr">MRR</option>
                 <option value="query_latency_p50_ms">Latency p50</option>
                 <option value="query_latency_p95_ms">Latency p95</option>
@@ -146,6 +147,7 @@
                 <th data-sort="hit_at_1">Hit@1</th>
                 <th data-sort="hit_at_5">Hit@5</th>
                 <th data-sort="symbol_hit_at_5">Sym@5</th>
+                <th data-sort="chunk_hit_at_5" title="Chunk Hit@5 &mdash; fraction of queries where the correct code chunk (function/class body) was found in the top 5 results">Chunk@5</th>
                 <th data-sort="mrr">MRR</th>
                 <th data-sort="query_latency_p50_ms">p50 ms</th>
                 <th data-sort="query_latency_p95_ms">p95 ms</th>
@@ -185,14 +187,14 @@
                 entries = data.entries || [];
                 renderTable();
             } catch (e) {
-                document.getElementById('tbody').innerHTML = '<tr><td colspan="16" class="empty">Failed to load data</td></tr>';
+                document.getElementById('tbody').innerHTML = '<tr><td colspan="17" class="empty">Failed to load data</td></tr>';
             }
         }
 
         function renderTable() {
             const tbody = document.getElementById('tbody');
             if (!entries.length) {
-                tbody.innerHTML = '<tr><td colspan="16" class="empty">No benchmark results yet. Run: rag-bench run --preset nova-rag</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="17" class="empty">No benchmark results yet. Run: rag-bench run --preset nova-rag</td></tr>';
                 return;
             }
 
@@ -214,6 +216,7 @@
                     <td class="metric">${pct(e.hit_at_1)}</td>
                     <td class="metric">${pct(e.hit_at_5)}</td>
                     <td class="metric">${pct(e.symbol_hit_at_5)}</td>
+                    <td class="metric">${pct(e.chunk_hit_at_5 || 0)}</td>
                     <td class="metric">${e.mrr.toFixed(4)}</td>
                     <td class="metric">${e.query_latency_p50_ms.toFixed(0)}</td>
                     <td class="metric">${e.query_latency_p95_ms.toFixed(0)}</td>

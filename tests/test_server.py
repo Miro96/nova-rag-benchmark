@@ -874,9 +874,9 @@ class TestHtmlTokenColumns:
         response = test_client.get("/")
         assert response.status_code == 200
         html = response.text
-        # Verify the empty state colspan accounts for new columns (was 13, now 16)
-        assert 'colspan="16"' in html, (
-            "Empty state colspan should be 16 to account for new token columns"
+        # Verify the empty state colspan accounts for new columns (was 13, now 17)
+        assert 'colspan="17"' in html, (
+            "Empty state colspan should be 17 to account for new token and chunk columns"
         )
         # Verify token column headers are present
         assert "Avg Tokens" in html

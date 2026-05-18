@@ -35,6 +35,7 @@ class RetrievalMetrics(BaseModel):
     hit_at_5: float = 0
     hit_at_10: float = 0
     symbol_hit_at_5: float = 0
+    chunk_hit_at_5: float = 0
     mrr: float = 0
     latency: LatencyMetrics = LatencyMetrics()
     tokens: dict = {}
@@ -69,6 +70,7 @@ class LeaderboardEntry(BaseModel):
     hit_at_1: float
     hit_at_5: float
     symbol_hit_at_5: float
+    chunk_hit_at_5: float = 0
     mrr: float
     query_latency_p50_ms: float
     query_latency_p95_ms: float

@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS runs (
 
     -- composite
     composite_score REAL DEFAULT 0,
+    chunk_hit_at_5 REAL DEFAULT 0,
 
     -- token usage
     avg_response_tokens REAL DEFAULT 0,
@@ -67,7 +68,8 @@ CREATE TABLE IF NOT EXISTS runs (
     environment TEXT DEFAULT '{}',  -- JSON
     by_difficulty TEXT DEFAULT '{}', -- JSON
     by_type TEXT DEFAULT '{}',       -- JSON
-    repos TEXT DEFAULT '[]'          -- JSON
+    repos TEXT DEFAULT '[]',         -- JSON
+    queries TEXT DEFAULT '[]'        -- JSON
 );
 """
 
@@ -101,6 +103,17 @@ async def init_db() -> None:
                     f"ALTER TABLE runs ADD COLUMN {col_name} {col_def}"
                 )
 
+        chunk_columns = [
+            ("chunk_hit_at_5", "REAL DEFAULT 0"),
+            ("queries", "TEXT DEFAULT '[]'"),
+        ]
+
+        for col_name, col_def in chunk_columns:
+            if col_name not in existing_columns:
+                await db.execute(
+                    f"ALTER TABLE runs ADD COLUMN {col_name} {col_def}"
+                )
+
         await db.commit()
 
 
@@ -129,12 +142,12 @@ async def insert_run(data: dict) -> str:
                     symbol_hit_at_5, mrr,
                     query_latency_p50_ms, query_latency_p95_ms,
                     query_latency_p99_ms, query_latency_mean_ms,
-                    avg_tool_calls, composite_score,
+                    avg_tool_calls, composite_score, chunk_hit_at_5,
                     avg_response_tokens, p95_response_tokens,
                     total_response_tokens, avg_llm_tokens,
                     total_queries, total_hits,
                     bench_version, dataset_version,
-                    environment, by_difficulty, by_type, repos
+                    environment, by_difficulty, by_type, repos, queries
                 ) VALUES (
                     ?, ?, ?, ?, ?,
                     ?, ?, ?,
@@ -143,11 +156,11 @@ async def insert_run(data: dict) -> str:
                     ?, ?,
                     ?, ?,
                     ?, ?,
-                    ?, ?,
+                    ?, ?, ?,
                     ?, ?, ?, ?,
                     ?, ?,
                     ?, ?,
-                    ?, ?, ?, ?
+                    ?, ?, ?, ?, ?
                 )
                 """,
                 (
@@ -173,6 +186,7 @@ async def insert_run(data: dict) -> str:
                     latency.get("mean_ms", 0),
                     efficiency.get("avg_tool_calls", 0),
                     data.get("composite_score", 0),
+                    retrieval.get("chunk_hit_at_5", 0),
                     tokens.get("avg", 0),
                     tokens.get("p95", 0),
                     tokens.get("total", 0),
@@ -185,6 +199,7 @@ async def insert_run(data: dict) -> str:
                     json.dumps(data.get("by_difficulty", {})),
                     json.dumps(data.get("by_type", {})),
                     json.dumps(data.get("repos", [])),
+                    json.dumps(data.get("query_details", [])),
                 ),
             )
             await db.commit()
@@ -213,6 +228,7 @@ async def get_leaderboard(
         "submitted_at",
         "avg_response_tokens", "p95_response_tokens",
         "total_response_tokens", "avg_llm_tokens",
+        "chunk_hit_at_5",
     }
     if sort_by not in valid_sorts:
         sort_by = "composite_score"
