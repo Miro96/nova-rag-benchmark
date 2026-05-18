@@ -30,6 +30,10 @@ class QueryResult:
     found_symbol: bool = False
     repo: str = ""
     error: str = ""  # non-empty when query failed (timeout, server crash, etc.)
+    response_tokens: int | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_llm_tokens: int | None = None
 
 
 @dataclass
@@ -65,6 +69,18 @@ class BenchmarkMetrics:
 
     # Composite
     composite_score: float = 0.0
+
+    # Token metrics — response (content returned by RAG)
+    avg_response_tokens: float = 0.0
+    p50_response_tokens: float = 0.0
+    p95_response_tokens: float = 0.0
+    total_response_tokens: int = 0
+
+    # Token metrics — LLM baseline usage
+    avg_prompt_tokens: float = 0.0
+    avg_completion_tokens: float = 0.0
+    avg_total_llm_tokens: float = 0.0
+    total_llm_tokens: int = 0
 
     # Breakdowns
     by_difficulty: dict[str, dict] = field(default_factory=dict)
@@ -427,6 +443,37 @@ def compute_metrics(
             for exp in r.expected_files
         )),
     )
+
+    # --- Token aggregation: response tokens -----------------------------------
+    _resp_tokens = [r.response_tokens for r in results
+                    if r.response_tokens is not None]
+    if _resp_tokens:
+        metrics.avg_response_tokens = sum(_resp_tokens) / len(_resp_tokens)
+        metrics.p50_response_tokens = compute_percentile(
+            [float(v) for v in _resp_tokens], 50,
+        )
+        metrics.p95_response_tokens = compute_percentile(
+            [float(v) for v in _resp_tokens], 95,
+        )
+        metrics.total_response_tokens = sum(_resp_tokens)
+
+    # --- Token aggregation: LLM baseline usage --------------------------------
+    _prompt_tokens = [r.prompt_tokens for r in results
+                      if r.prompt_tokens is not None]
+    _completion_tokens = [r.completion_tokens for r in results
+                          if r.completion_tokens is not None]
+    _total_llm = [r.total_llm_tokens for r in results
+                  if r.total_llm_tokens is not None]
+
+    if _prompt_tokens:
+        metrics.avg_prompt_tokens = sum(_prompt_tokens) / len(_prompt_tokens)
+    if _completion_tokens:
+        metrics.avg_completion_tokens = (
+            sum(_completion_tokens) / len(_completion_tokens)
+        )
+    if _total_llm:
+        metrics.avg_total_llm_tokens = sum(_total_llm) / len(_total_llm)
+        metrics.total_llm_tokens = sum(_total_llm)
 
     # Breakdowns
     for group_key, group_fn in [

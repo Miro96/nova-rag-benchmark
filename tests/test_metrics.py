@@ -8,6 +8,7 @@ import pytest
 
 from rag_bench.metrics import (
     COMPOSITE_WEIGHTS,
+    BenchmarkMetrics,
     MemorySampler,
     QueryResult,
     compute_composite_score,
@@ -764,3 +765,340 @@ class TestCompositeScore:
         ]
         m = compute_metrics(results, ingest_total_sec=1.0, ingest_total_files=10)
         assert 0.0 < m.composite_score < 1.0
+
+
+# ---------------------------------------------------------------------------
+# Token fields: QueryResult
+# ---------------------------------------------------------------------------
+
+
+class TestQueryResultTokenFields:
+    """VAL-METRIC-001: QueryResult carries response_tokens field."""
+
+    def test_response_tokens_defaults_to_none(self):
+        qr = QueryResult(
+            query_id="q", query_text="", query_type="locate",
+            difficulty="easy", expected_files=[], expected_symbols=[],
+            returned_files=[], returned_symbols=[], latency_ms=1.0,
+        )
+        assert qr.response_tokens is None
+
+    def test_response_tokens_int_settable(self):
+        qr = QueryResult(
+            query_id="q", query_text="", query_type="locate",
+            difficulty="easy", expected_files=[], expected_symbols=[],
+            returned_files=[], returned_symbols=[], latency_ms=1.0,
+            response_tokens=42,
+        )
+        assert qr.response_tokens == 42
+
+    def test_response_tokens_explicit_none(self):
+        qr = QueryResult(
+            query_id="q", query_text="", query_type="locate",
+            difficulty="easy", expected_files=[], expected_symbols=[],
+            returned_files=[], returned_symbols=[], latency_ms=1.0,
+            response_tokens=None,
+        )
+        assert qr.response_tokens is None
+
+
+class TestQueryResultLLMTokenFields:
+    """VAL-METRIC-002: QueryResult carries LLM usage fields."""
+
+    def test_prompt_tokens_defaults_to_none(self):
+        qr = QueryResult(
+            query_id="q", query_text="", query_type="locate",
+            difficulty="easy", expected_files=[], expected_symbols=[],
+            returned_files=[], returned_symbols=[], latency_ms=1.0,
+        )
+        assert qr.prompt_tokens is None
+        assert qr.completion_tokens is None
+        assert qr.total_llm_tokens is None
+
+    def test_llm_token_fields_settable(self):
+        qr = QueryResult(
+            query_id="q", query_text="", query_type="locate",
+            difficulty="easy", expected_files=[], expected_symbols=[],
+            returned_files=[], returned_symbols=[], latency_ms=1.0,
+            prompt_tokens=100,
+            completion_tokens=20,
+            total_llm_tokens=120,
+        )
+        assert qr.prompt_tokens == 100
+        assert qr.completion_tokens == 20
+        assert qr.total_llm_tokens == 120
+
+
+# ---------------------------------------------------------------------------
+# Token fields: BenchmarkMetrics
+# ---------------------------------------------------------------------------
+
+
+class TestBenchmarkMetricsTokenFields:
+    """VAL-METRIC-003: BenchmarkMetrics carries aggregate token stats."""
+
+    def test_response_token_fields_default_to_zero(self):
+        m = BenchmarkMetrics()
+        assert m.avg_response_tokens == 0.0
+        assert m.p50_response_tokens == 0.0
+        assert m.p95_response_tokens == 0.0
+        assert m.total_response_tokens == 0
+
+    def test_response_token_fields_settable(self):
+        m = BenchmarkMetrics(
+            avg_response_tokens=12.5,
+            p50_response_tokens=10.0,
+            p95_response_tokens=20.0,
+            total_response_tokens=1250,
+        )
+        assert m.avg_response_tokens == 12.5
+        assert m.p50_response_tokens == 10.0
+        assert m.p95_response_tokens == 20.0
+        assert m.total_response_tokens == 1250
+
+
+class TestBenchmarkMetricsLLMTokenFields:
+    """VAL-METRIC-006: BenchmarkMetrics carries aggregate LLM token stats."""
+
+    def test_llm_token_fields_default_to_zero(self):
+        m = BenchmarkMetrics()
+        assert m.avg_prompt_tokens == 0.0
+        assert m.avg_completion_tokens == 0.0
+        assert m.avg_total_llm_tokens == 0.0
+        assert m.total_llm_tokens == 0
+
+    def test_llm_token_fields_settable(self):
+        m = BenchmarkMetrics(
+            avg_prompt_tokens=500.0,
+            avg_completion_tokens=80.0,
+            avg_total_llm_tokens=580.0,
+            total_llm_tokens=5800,
+        )
+        assert m.avg_prompt_tokens == 500.0
+        assert m.avg_completion_tokens == 80.0
+        assert m.avg_total_llm_tokens == 580.0
+        assert m.total_llm_tokens == 5800
+
+
+# ---------------------------------------------------------------------------
+# compute_metrics: token aggregation
+# ---------------------------------------------------------------------------
+
+
+class TestComputeMetricsResponseTokens:
+    """VAL-METRIC-004: compute_metrics aggregates response_tokens."""
+
+    def test_all_populated(self):
+        """Average/p50/p95/total computed correctly when every result has a value."""
+        results = [
+            _make_qr(latency_ms=10, returned_files=["a.py"],
+                     expected_files=["a.py"]),
+            _make_qr(latency_ms=20, returned_files=["b.py"],
+                     expected_files=["b.py"]),
+            _make_qr(latency_ms=30, returned_files=["c.py"],
+                     expected_files=["c.py"]),
+            _make_qr(latency_ms=40, returned_files=["d.py"],
+                     expected_files=["d.py"]),
+            _make_qr(latency_ms=50, returned_files=["e.py"],
+                     expected_files=["e.py"]),
+        ]
+        # Set response_tokens: 10, 20, 30, 40, 50
+        for i, r in enumerate(results):
+            r.response_tokens = (i + 1) * 10
+
+        m = compute_metrics(results)
+
+        # Total = 10+20+30+40+50 = 150
+        assert m.total_response_tokens == 150
+        # Average = 150 / 5 = 30
+        assert m.avg_response_tokens == pytest.approx(30.0)
+        # p50 = median of [10, 20, 30, 40, 50] = 30
+        assert m.p50_response_tokens == pytest.approx(30.0)
+        # p95 ≈ 48 (index 3.8)
+        assert m.p95_response_tokens > 40.0
+
+    def test_none_values_excluded_from_average(self):
+        """Averages exclude None; totals sum only non-None values."""
+        results = [
+            _make_qr(latency_ms=10, returned_files=["a.py"],
+                     expected_files=["a.py"]),
+            _make_qr(latency_ms=20, returned_files=["b.py"],
+                     expected_files=["b.py"]),
+            _make_qr(latency_ms=30, returned_files=["c.py"],
+                     expected_files=["c.py"]),
+            _make_qr(latency_ms=40, returned_files=["d.py"],
+                     expected_files=["d.py"]),
+        ]
+        results[0].response_tokens = 100
+        results[1].response_tokens = None  # excluded
+        results[2].response_tokens = 300
+        results[3].response_tokens = None  # excluded
+
+        m = compute_metrics(results)
+
+        # Total = 100 + 300 = 400
+        assert m.total_response_tokens == 400
+        # Average over 2 non-None values: 400/2 = 200
+        assert m.avg_response_tokens == pytest.approx(200.0)
+        # p50 of [100, 300]
+        assert m.p50_response_tokens == pytest.approx(200.0)
+        # p95 of [100, 300]
+        assert m.p95_response_tokens == pytest.approx(290.0)
+
+    def test_all_none_returns_zero(self):
+        """No crash, all token aggregates are 0 when every response_tokens is None."""
+        results = [
+            _make_qr(latency_ms=10),
+            _make_qr(latency_ms=20),
+            _make_qr(latency_ms=30),
+        ]
+        # All response_tokens are None (default)
+
+        m = compute_metrics(results)
+        assert m.avg_response_tokens == 0.0
+        assert m.p50_response_tokens == 0.0
+        assert m.p95_response_tokens == 0.0
+        assert m.total_response_tokens == 0
+
+    def test_all_none_non_token_metrics_unaffected(self):
+        """VAL-METRIC-005: Non-token metrics still correct when tokens are None."""
+        results = [
+            _make_qr(
+                returned_files=["src/app.py"],
+                expected_files=["src/app.py"],
+                latency_ms=100,
+            ),
+            _make_qr(
+                returned_files=["wrong.py"],
+                expected_files=["src/config.py"],
+                latency_ms=200,
+            ),
+        ]
+        # response_tokens are all None (default)
+
+        m = compute_metrics(results, ingest_total_sec=5.0, ingest_total_files=100)
+
+        # Token fields are all 0
+        assert m.avg_response_tokens == 0.0
+        assert m.total_response_tokens == 0
+
+        # Non-token fields are still correct
+        assert m.hit_at_1 == 0.5
+        assert m.total_queries == 2
+        assert m.ingest_files_per_sec == 20.0
+
+
+class TestComputeMetricsLLMTokens:
+    """VAL-METRIC-007: compute_metrics aggregates LLM tokens when present."""
+
+    def test_llm_tokens_aggregated(self):
+        results = [
+            _make_qr(latency_ms=10),
+            _make_qr(latency_ms=20),
+            _make_qr(latency_ms=30),
+            _make_qr(latency_ms=40),
+        ]
+        results[0].prompt_tokens = 100
+        results[0].completion_tokens = 20
+        results[0].total_llm_tokens = 120
+
+        results[1].prompt_tokens = 200
+        results[1].completion_tokens = 30
+        results[1].total_llm_tokens = 230
+
+        results[2].prompt_tokens = 300
+        results[2].completion_tokens = 40
+        results[2].total_llm_tokens = 340
+
+        results[3].prompt_tokens = None
+        results[3].completion_tokens = None
+        results[3].total_llm_tokens = None
+
+        m = compute_metrics(results)
+
+        # Averages over 3 non-None entries
+        assert m.avg_prompt_tokens == pytest.approx(200.0)   # (100+200+300)/3
+        assert m.avg_completion_tokens == pytest.approx(30.0)  # (20+30+40)/3
+        assert m.avg_total_llm_tokens == pytest.approx(230.0)  # (120+230+340)/3
+        assert m.total_llm_tokens == 690  # 120+230+340
+
+    def test_all_none_llm_tokens_returns_zero(self):
+        results = [
+            _make_qr(latency_ms=10),
+            _make_qr(latency_ms=20),
+        ]
+        # All LLM fields are None
+
+        m = compute_metrics(results)
+        assert m.avg_prompt_tokens == 0.0
+        assert m.avg_completion_tokens == 0.0
+        assert m.avg_total_llm_tokens == 0.0
+        assert m.total_llm_tokens == 0
+
+
+class TestLatencyStatsUnaffectedByTokens:
+    """VAL-METRIC-008: adding token fields does not change latency stats."""
+
+    @pytest.mark.parametrize("with_tokens", [False, True])
+    def test_latency_stats_identical(self, with_tokens):
+        """Latency percentiles unchanged whether token fields are set or not."""
+        results = [
+            _make_qr(latency_ms=10),
+            _make_qr(latency_ms=25),
+            _make_qr(latency_ms=40),
+            _make_qr(latency_ms=60),
+            _make_qr(latency_ms=80),
+            _make_qr(latency_ms=110),
+            _make_qr(latency_ms=150),
+            _make_qr(latency_ms=200),
+            _make_qr(latency_ms=400),
+            _make_qr(latency_ms=900),
+        ]
+
+        # Set token fields only when testing the "with tokens" case
+        if with_tokens:
+            for i, r in enumerate(results):
+                r.response_tokens = (i + 1) * 10
+                r.prompt_tokens = (i + 1) * 5
+                r.completion_tokens = (i + 1)
+                r.total_llm_tokens = r.prompt_tokens + r.completion_tokens
+
+        m = compute_metrics(results)
+
+        # Verify latency stats (computed over the same latencies regardless of tokens)
+        assert m.query_latency_p50_ms > 0
+        assert m.query_latency_p99_ms >= m.query_latency_p95_ms >= m.query_latency_p50_ms
+        assert m.query_latency_mean_ms > 0
+
+    def test_latency_numerically_identical_with_and_without_tokens(self):
+        """Exact numerical equality of latency stats with vs without tokens."""
+        _latencies = [10.0, 25.0, 40.0, 60.0, 80.0, 110.0, 150.0, 200.0, 400.0, 900.0]
+
+        def _build(tokenised: bool) -> list[QueryResult]:
+            rs = [_make_qr(latency_ms=v) for v in _latencies]
+            if tokenised:
+                for i, r in enumerate(rs):
+                    r.response_tokens = (i + 1) * 10
+                    r.prompt_tokens = (i + 1) * 5
+                    r.completion_tokens = (i + 1)
+                    r.total_llm_tokens = r.prompt_tokens + r.completion_tokens
+            return rs
+
+        m_no_tokens = compute_metrics(_build(False))
+        m_with_tokens = compute_metrics(_build(True))
+
+        assert m_no_tokens.query_latency_p50_ms == m_with_tokens.query_latency_p50_ms
+        assert m_no_tokens.query_latency_p95_ms == m_with_tokens.query_latency_p95_ms
+        assert m_no_tokens.query_latency_p99_ms == m_with_tokens.query_latency_p99_ms
+        assert m_no_tokens.query_latency_mean_ms == m_with_tokens.query_latency_mean_ms
+
+    def test_single_query_latency_unchanged_when_tokens_present(self):
+        """Latency stats for a single query should be identical."""
+        results = [_make_qr(latency_ms=42.5)]
+        m_no_tok = compute_metrics(results)
+
+        results[0].response_tokens = 999
+        m_with_tok = compute_metrics(results)
+
+        assert m_no_tok.query_latency_p50_ms == m_with_tok.query_latency_p50_ms
+        assert m_no_tok.query_latency_mean_ms == m_with_tok.query_latency_mean_ms
