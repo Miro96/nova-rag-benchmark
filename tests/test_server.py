@@ -453,6 +453,377 @@ class TestServeDefaults:
 
 
 # ---------------------------------------------------------------------------
+# Token column tests — VAL-SERVER-001 through VAL-SERVER-008 + VAL-COMPAT-003
+# ---------------------------------------------------------------------------
+
+def _valid_payload_with_tokens(run_id: str | None = None) -> dict:
+    """Return a valid benchmark submission payload including token fields."""
+    payload = _valid_payload(run_id=run_id)
+    payload["retrieval"]["tokens"] = {
+        "avg": 1234.5,
+        "p50": 1100.0,
+        "p95": 1800.0,
+        "total": 129000.0,
+    }
+    payload["efficiency"]["avg_total_llm_tokens"] = 2380.0
+    return payload
+
+
+class TestSchemaTokenColumns:
+    """VAL-SERVER-001: DB schema includes token columns."""
+
+    def test_schema_has_token_columns(self, db_with_tokens):
+        """After init_db(), PRAGMA table_info(runs) lists token columns."""
+        import asyncio, aiosqlite
+        from server import db
+
+        async def _check():
+            async with aiosqlite.connect(db.DB_PATH) as conn:
+                cursor = await conn.execute("PRAGMA table_info(runs)")
+                rows = await cursor.fetchall()
+                columns = {row[1] for row in rows}
+                expected = {
+                    "avg_response_tokens", "p95_response_tokens",
+                    "total_response_tokens", "avg_llm_tokens",
+                }
+                missing = expected - columns
+                assert not missing, f"Missing columns: {missing}"
+                # Verify types
+                for row in rows:
+                    if row[1] in expected:
+                        # col type should be REAL or similar
+                        assert "REAL" in row[2].upper() or row[2].upper() == "REAL", \
+                            f"Column {row[1]} has type {row[2]}, expected REAL"
+
+        asyncio.run(_check())
+
+
+class TestLegacyDbAlter:
+    """VAL-SERVER-002: Idempotent ALTER for legacy databases."""
+
+    OLD_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS runs (
+        id TEXT PRIMARY KEY,
+        server_name TEXT NOT NULL,
+        git_url TEXT DEFAULT '',
+        git_user TEXT DEFAULT '',
+        server_version TEXT DEFAULT '',
+        submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        ingest_total_files INTEGER DEFAULT 0,
+        ingest_total_sec REAL DEFAULT 0,
+        ingest_files_per_sec REAL DEFAULT 0,
+        index_size_mb REAL DEFAULT 0,
+        ram_peak_mb REAL DEFAULT 0,
+        hit_at_1 REAL DEFAULT 0,
+        hit_at_3 REAL DEFAULT 0,
+        hit_at_5 REAL DEFAULT 0,
+        hit_at_10 REAL DEFAULT 0,
+        symbol_hit_at_5 REAL DEFAULT 0,
+        mrr REAL DEFAULT 0,
+        query_latency_p50_ms REAL DEFAULT 0,
+        query_latency_p95_ms REAL DEFAULT 0,
+        query_latency_p99_ms REAL DEFAULT 0,
+        query_latency_mean_ms REAL DEFAULT 0,
+        avg_tool_calls REAL DEFAULT 0,
+        composite_score REAL DEFAULT 0,
+        total_queries INTEGER DEFAULT 0,
+        total_hits INTEGER DEFAULT 0,
+        bench_version TEXT DEFAULT '',
+        dataset_version TEXT DEFAULT '',
+        environment TEXT DEFAULT '{}',
+        by_difficulty TEXT DEFAULT '{}',
+        by_type TEXT DEFAULT '{}',
+        repos TEXT DEFAULT '[]'
+    );
+    """
+
+    def test_legacy_db_adds_columns_without_losing_data(self, legacy_db_path):
+        """init_db on legacy DB adds columns and preserves old rows."""
+        import asyncio, aiosqlite
+        from server.db import init_db, DB_PATH as _orig_db_path
+        from server import db
+
+        # Point DB_PATH to our legacy temp file
+        old_path = db.DB_PATH
+        db.DB_PATH = legacy_db_path
+        try:
+            # Run init_db which should add missing columns
+            asyncio.run(init_db())
+
+            # Verify new columns exist
+            async def _check():
+                async with aiosqlite.connect(legacy_db_path) as conn:
+                    cursor = await conn.execute("PRAGMA table_info(runs)")
+                    rows = await cursor.fetchall()
+                    columns = {row[1] for row in rows}
+                    expected = {
+                        "avg_response_tokens", "p95_response_tokens",
+                        "total_response_tokens", "avg_llm_tokens",
+                    }
+                    missing = expected - columns
+                    assert not missing, f"Missing columns after alter: {missing}"
+
+                    # Verify legacy row still exists and has the new columns as 0
+                    cursor = await conn.execute("SELECT * FROM runs WHERE id = ?", ("legacy-run-1",))
+                    row = await cursor.fetchone()
+                    assert row is not None, "Legacy row was lost!"
+
+            asyncio.run(_check())
+        finally:
+            db.DB_PATH = old_path
+
+    def test_init_db_idempotent_on_fresh_db(self, db_with_tokens):
+        """Calling init_db twice on a fresh DB is safe (idempotent)."""
+        import asyncio
+        from server.db import init_db
+        from server import db
+
+        # Already initialized once by fixture; run again
+        asyncio.run(init_db())
+
+        # Verify columns still exist
+        async def _check():
+            import aiosqlite
+            async with aiosqlite.connect(db.DB_PATH) as conn:
+                cursor = await conn.execute("PRAGMA table_info(runs)")
+                rows = await cursor.fetchall()
+                columns = {row[1] for row in rows}
+                assert "avg_response_tokens" in columns
+                assert "p95_response_tokens" in columns
+                assert "total_response_tokens" in columns
+                assert "avg_llm_tokens" in columns
+
+        asyncio.run(_check())
+
+
+class TestInsertRunTokenFields:
+    """VAL-SERVER-003: insert_run persists token fields."""
+
+    def test_insert_with_tokens_stores_them(self, test_client):
+        """insert_run with token fields stores them; get_run returns them."""
+        payload = _valid_payload_with_tokens()
+        response = test_client.post("/api/submit", json=payload)
+        assert response.status_code == 200
+
+        run_id = payload["run_id"]
+        response = test_client.get(f"/api/run/{run_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["avg_response_tokens"] == 1234.5
+        assert data["p95_response_tokens"] == 1800.0
+        assert data["total_response_tokens"] == 129000.0
+        assert data["avg_llm_tokens"] == 2380.0
+
+    def test_insert_without_tokens_stores_zeros(self, test_client):
+        """insert_run without token fields stores 0 in those columns (VAL-SERVER-004)."""
+        payload = _valid_payload()
+        # Ensure no token fields
+        payload["retrieval"].pop("tokens", None)
+        payload["efficiency"].pop("avg_total_llm_tokens", None)
+
+        response = test_client.post("/api/submit", json=payload)
+        assert response.status_code == 200
+
+        run_id = payload["run_id"]
+        response = test_client.get(f"/api/run/{run_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["avg_response_tokens"] == 0.0
+        assert data["p95_response_tokens"] == 0.0
+        assert data["total_response_tokens"] == 0.0
+        assert data["avg_llm_tokens"] == 0.0
+
+
+class TestLeaderboardTokenFields:
+    """VAL-SERVER-005 + VAL-SERVER-006: Leaderboard exposes and sorts by tokens."""
+
+    def test_leaderboard_entries_have_token_fields(self, test_client):
+        """GET /api/leaderboard returns entries with token fields."""
+        payload = _valid_payload_with_tokens()
+        test_client.post("/api/submit", json=payload)
+
+        response = test_client.get("/api/leaderboard")
+        assert response.status_code == 200
+        entries = response.json()["entries"]
+        assert len(entries) >= 1
+        entry = entries[0]
+        assert "avg_response_tokens" in entry
+        assert "p95_response_tokens" in entry
+        assert "total_response_tokens" in entry
+        assert "avg_llm_tokens" in entry
+
+    def test_leaderboard_sort_by_avg_response_tokens_asc(self, test_client):
+        """?sort_by=avg_response_tokens&order=asc returns ordered results."""
+        import uuid
+
+        # Insert entries with different token values
+        for i, tokens_val in enumerate([500.0, 100.0, 300.0]):
+            payload = _valid_payload(run_id=str(uuid.uuid4()))
+            payload["retrieval"]["tokens"] = {
+                "avg": tokens_val, "p50": tokens_val,
+                "p95": tokens_val, "total": tokens_val * 10,
+            }
+            test_client.post("/api/submit", json=payload)
+
+        response = test_client.get(
+            "/api/leaderboard?sort_by=avg_response_tokens&order=asc"
+        )
+        assert response.status_code == 200
+        entries = response.json()["entries"]
+        tokens = [e["avg_response_tokens"] for e in entries
+                  if e.get("avg_response_tokens", 0) > 0]
+        assert tokens == sorted(tokens), f"Expected sorted ascending, got {tokens}"
+
+    def test_leaderboard_sort_by_avg_response_tokens_desc(self, test_client):
+        """?sort_by=avg_response_tokens&order=desc returns ordered results."""
+        import uuid
+
+        for i, tokens_val in enumerate([500.0, 100.0, 300.0]):
+            payload = _valid_payload(run_id=str(uuid.uuid4()))
+            payload["retrieval"]["tokens"] = {
+                "avg": tokens_val, "p50": tokens_val,
+                "p95": tokens_val, "total": tokens_val * 10,
+            }
+            test_client.post("/api/submit", json=payload)
+
+        response = test_client.get(
+            "/api/leaderboard?sort_by=avg_response_tokens&order=desc"
+        )
+        assert response.status_code == 200
+        entries = response.json()["entries"]
+        tokens = [e["avg_response_tokens"] for e in entries
+                  if e.get("avg_response_tokens", 0) > 0]
+        assert tokens == sorted(tokens, reverse=True), \
+            f"Expected sorted descending, got {tokens}"
+
+    def test_leaderboard_sort_by_p95_response_tokens(self, test_client):
+        """?sort_by=p95_response_tokens sorts by p95."""
+        import uuid
+
+        for i, tokens_val in enumerate([1800.0, 900.0, 1500.0]):
+            payload = _valid_payload(run_id=str(uuid.uuid4()))
+            payload["retrieval"]["tokens"] = {
+                "avg": tokens_val, "p50": tokens_val,
+                "p95": tokens_val, "total": tokens_val * 10,
+            }
+            test_client.post("/api/submit", json=payload)
+
+        response = test_client.get(
+            "/api/leaderboard?sort_by=p95_response_tokens&order=asc"
+        )
+        assert response.status_code == 200
+        entries = response.json()["entries"]
+        tokens = [e["p95_response_tokens"] for e in entries
+                  if e.get("p95_response_tokens", 0) > 0]
+        assert tokens == sorted(tokens)
+
+    def test_leaderboard_sort_by_total_response_tokens(self, test_client):
+        """?sort_by=total_response_tokens sorts by total."""
+        import uuid
+
+        for i, tokens_val in enumerate([30000.0, 10000.0, 20000.0]):
+            payload = _valid_payload(run_id=str(uuid.uuid4()))
+            payload["retrieval"]["tokens"] = {
+                "avg": tokens_val, "p50": tokens_val,
+                "p95": tokens_val, "total": tokens_val,
+            }
+            test_client.post("/api/submit", json=payload)
+
+        response = test_client.get(
+            "/api/leaderboard?sort_by=total_response_tokens&order=asc"
+        )
+        assert response.status_code == 200
+        entries = response.json()["entries"]
+        tokens = [e["total_response_tokens"] for e in entries
+                  if e.get("total_response_tokens", 0) > 0]
+        assert tokens == sorted(tokens)
+
+    def test_leaderboard_sort_by_avg_llm_tokens(self, test_client):
+        """?sort_by=avg_llm_tokens sorts by LLM tokens."""
+        import uuid
+
+        for i, tokens_val in enumerate([3000.0, 1000.0, 2000.0]):
+            payload = _valid_payload(run_id=str(uuid.uuid4()))
+            payload["efficiency"]["avg_total_llm_tokens"] = tokens_val
+            test_client.post("/api/submit", json=payload)
+
+        response = test_client.get(
+            "/api/leaderboard?sort_by=avg_llm_tokens&order=asc"
+        )
+        assert response.status_code == 200
+        entries = response.json()["entries"]
+        tokens = [e["avg_llm_tokens"] for e in entries
+                  if e.get("avg_llm_tokens", 0) > 0]
+        assert tokens == sorted(tokens)
+
+
+class TestSubmitTokenFields:
+    """VAL-SERVER-008: Server submit endpoint accepts new fields."""
+
+    def test_submit_with_token_fields_returns_200(self, test_client):
+        """POST /api/submit with token fields returns 200 and run_id."""
+        payload = _valid_payload_with_tokens()
+        response = test_client.post("/api/submit", json=payload)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok"
+        assert data["run_id"] == payload["run_id"]
+
+    def test_get_run_echoes_token_fields(self, test_client):
+        """GET /api/run/{id} returns the submitted token fields."""
+        payload = _valid_payload_with_tokens()
+        test_client.post("/api/submit", json=payload)
+
+        response = test_client.get(f"/api/run/{payload['run_id']}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["avg_response_tokens"] == 1234.5
+        assert data["p95_response_tokens"] == 1800.0
+        assert data["total_response_tokens"] == 129000.0
+        assert data["avg_llm_tokens"] == 2380.0
+
+
+class TestBackCompatOldResultJson:
+    """VAL-COMPAT-003: Old result JSON loadable by leaderboard."""
+
+    def test_old_payload_without_tokens_accepted(self, test_client):
+        """Old result JSON (no token fields) accepted by POST /api/submit."""
+        payload = _valid_payload()
+        # Ensure no token fields at all
+        payload["retrieval"].pop("tokens", None)
+        payload["efficiency"].pop("avg_total_llm_tokens", None)
+
+        response = test_client.post("/api/submit", json=payload)
+        assert response.status_code == 200
+
+        # Verify it shows up in leaderboard with 0s
+        response = test_client.get("/api/leaderboard")
+        entries = response.json()["entries"]
+        matching = [e for e in entries if e["run_id"] == payload["run_id"]]
+        assert len(matching) == 1
+        entry = matching[0]
+        assert entry["avg_response_tokens"] == 0.0
+        assert entry["p95_response_tokens"] == 0.0
+        assert entry["total_response_tokens"] == 0.0
+        assert entry["avg_llm_tokens"] == 0.0
+
+    def test_old_payload_get_run_returns_zeros(self, test_client):
+        """GET /api/run/{id} on old payload returns 0s for token fields."""
+        payload = _valid_payload()
+        payload["retrieval"].pop("tokens", None)
+        payload["efficiency"].pop("avg_total_llm_tokens", None)
+        test_client.post("/api/submit", json=payload)
+
+        response = test_client.get(f"/api/run/{payload['run_id']}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["avg_response_tokens"] == 0.0
+        assert data["p95_response_tokens"] == 0.0
+        assert data["total_response_tokens"] == 0.0
+        assert data["avg_llm_tokens"] == 0.0
+
+
+# ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
@@ -480,3 +851,75 @@ def test_client():
     # Cleanup
     if db.DB_PATH.exists():
         db.DB_PATH.unlink()
+
+
+@pytest.fixture
+def db_with_tokens():
+    """Create a fresh DB via init_db() and return the DB_PATH."""
+    import asyncio
+    from server import db
+
+    db.DB_PATH = db.DB_PATH.parent / "test_leaderboard_tokens.db"
+    if db.DB_PATH.exists():
+        db.DB_PATH.unlink()
+
+    asyncio.run(db.init_db())
+    yield db.DB_PATH
+
+    if db.DB_PATH.exists():
+        db.DB_PATH.unlink()
+
+
+@pytest.fixture
+def legacy_db_path(tmp_path):
+    """Create a legacy DB (old schema, no token columns) with one row."""
+    import asyncio, aiosqlite
+
+    db_file = tmp_path / "legacy.db"
+
+    async def _create_legacy():
+        async with aiosqlite.connect(str(db_file)) as conn:
+            OLD_SCHEMA = """
+            CREATE TABLE IF NOT EXISTS runs (
+                id TEXT PRIMARY KEY,
+                server_name TEXT NOT NULL,
+                git_url TEXT DEFAULT '',
+                git_user TEXT DEFAULT '',
+                server_version TEXT DEFAULT '',
+                submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                ingest_total_files INTEGER DEFAULT 0,
+                ingest_total_sec REAL DEFAULT 0,
+                ingest_files_per_sec REAL DEFAULT 0,
+                index_size_mb REAL DEFAULT 0,
+                ram_peak_mb REAL DEFAULT 0,
+                hit_at_1 REAL DEFAULT 0,
+                hit_at_3 REAL DEFAULT 0,
+                hit_at_5 REAL DEFAULT 0,
+                hit_at_10 REAL DEFAULT 0,
+                symbol_hit_at_5 REAL DEFAULT 0,
+                mrr REAL DEFAULT 0,
+                query_latency_p50_ms REAL DEFAULT 0,
+                query_latency_p95_ms REAL DEFAULT 0,
+                query_latency_p99_ms REAL DEFAULT 0,
+                query_latency_mean_ms REAL DEFAULT 0,
+                avg_tool_calls REAL DEFAULT 0,
+                composite_score REAL DEFAULT 0,
+                total_queries INTEGER DEFAULT 0,
+                total_hits INTEGER DEFAULT 0,
+                bench_version TEXT DEFAULT '',
+                dataset_version TEXT DEFAULT '',
+                environment TEXT DEFAULT '{}',
+                by_difficulty TEXT DEFAULT '{}',
+                by_type TEXT DEFAULT '{}',
+                repos TEXT DEFAULT '[]'
+            );
+            """
+            await conn.executescript(OLD_SCHEMA)
+            await conn.execute(
+                """INSERT INTO runs (id, server_name, composite_score)
+                   VALUES ('legacy-run-1', 'legacy-server', 0.75)"""
+            )
+            await conn.commit()
+
+    asyncio.run(_create_legacy())
+    return db_file

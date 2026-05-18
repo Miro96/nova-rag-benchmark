@@ -53,6 +53,12 @@ CREATE TABLE IF NOT EXISTS runs (
     -- composite
     composite_score REAL DEFAULT 0,
 
+    -- token usage
+    avg_response_tokens REAL DEFAULT 0,
+    p95_response_tokens REAL DEFAULT 0,
+    total_response_tokens REAL DEFAULT 0,
+    avg_llm_tokens REAL DEFAULT 0,
+
     -- meta
     total_queries INTEGER DEFAULT 0,
     total_hits INTEGER DEFAULT 0,
@@ -67,9 +73,34 @@ CREATE TABLE IF NOT EXISTS runs (
 
 
 async def init_db() -> None:
-    """Initialize the database schema."""
+    """Initialize the database schema.
+
+    Idempotent: after creating the table, introspects via PRAGMA table_info(runs)
+    and runs ALTER TABLE ADD COLUMN for any missing token columns so legacy DBs
+    are upgraded in-place without data loss.
+    """
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(SCHEMA)
+        await db.commit()
+
+        # Introspect existing columns to detect missing token columns
+        cursor = await db.execute("PRAGMA table_info(runs)")
+        rows = await cursor.fetchall()
+        existing_columns = {row[1] for row in rows}
+
+        token_columns = [
+            ("avg_response_tokens", "REAL DEFAULT 0"),
+            ("p95_response_tokens", "REAL DEFAULT 0"),
+            ("total_response_tokens", "REAL DEFAULT 0"),
+            ("avg_llm_tokens", "REAL DEFAULT 0"),
+        ]
+
+        for col_name, col_def in token_columns:
+            if col_name not in existing_columns:
+                await db.execute(
+                    f"ALTER TABLE runs ADD COLUMN {col_name} {col_def}"
+                )
+
         await db.commit()
 
 
@@ -84,6 +115,7 @@ async def insert_run(data: dict) -> str:
     retrieval = data.get("retrieval", {})
     latency = retrieval.get("latency", {})
     efficiency = data.get("efficiency", {})
+    tokens = retrieval.get("tokens") or {}
 
     async with aiosqlite.connect(DB_PATH) as db:
         try:
@@ -98,6 +130,8 @@ async def insert_run(data: dict) -> str:
                     query_latency_p50_ms, query_latency_p95_ms,
                     query_latency_p99_ms, query_latency_mean_ms,
                     avg_tool_calls, composite_score,
+                    avg_response_tokens, p95_response_tokens,
+                    total_response_tokens, avg_llm_tokens,
                     total_queries, total_hits,
                     bench_version, dataset_version,
                     environment, by_difficulty, by_type, repos
@@ -110,6 +144,7 @@ async def insert_run(data: dict) -> str:
                     ?, ?,
                     ?, ?,
                     ?, ?,
+                    ?, ?, ?, ?,
                     ?, ?,
                     ?, ?,
                     ?, ?, ?, ?
@@ -138,6 +173,10 @@ async def insert_run(data: dict) -> str:
                     latency.get("mean_ms", 0),
                     efficiency.get("avg_tool_calls", 0),
                     data.get("composite_score", 0),
+                    tokens.get("avg", 0),
+                    tokens.get("p95", 0),
+                    tokens.get("total", 0),
+                    efficiency.get("avg_total_llm_tokens", 0),
                     retrieval.get("total_queries", 0),
                     retrieval.get("total_hits", 0),
                     data.get("bench_version", ""),
@@ -172,6 +211,8 @@ async def get_leaderboard(
         "index_size_mb", "ram_peak_mb",
         "avg_tool_calls", "total_queries", "total_hits",
         "submitted_at",
+        "avg_response_tokens", "p95_response_tokens",
+        "total_response_tokens", "avg_llm_tokens",
     }
     if sort_by not in valid_sorts:
         sort_by = "composite_score"

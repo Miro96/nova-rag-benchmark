@@ -37,10 +37,12 @@ class RetrievalMetrics(BaseModel):
     symbol_hit_at_5: float = 0
     mrr: float = 0
     latency: LatencyMetrics = LatencyMetrics()
+    tokens: dict = {}
 
 
 class EfficiencyMetrics(BaseModel):
     avg_tool_calls: float = 0
+    avg_total_llm_tokens: float = 0
 
 
 class BenchmarkSubmission(BaseModel):
@@ -73,4 +75,8 @@ class LeaderboardEntry(BaseModel):
     ingest_total_sec: float
     ram_peak_mb: float
     composite_score: float
+    avg_response_tokens: float = 0
+    p95_response_tokens: float = 0
+    total_response_tokens: float = 0
+    avg_llm_tokens: float = 0
     submitted_at: str
