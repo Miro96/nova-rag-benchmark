@@ -367,9 +367,14 @@ class DeepSeekBaselineAgent:
           * ``found_symbols`` — list of symbol names extracted from response.
           * ``tool_calls`` — number of tool invocations.
           * ``total_time_ms`` — wall-clock duration in milliseconds.
+          * ``prompt_tokens`` — total prompt tokens across all API calls.
+          * ``completion_tokens`` — total completion tokens.
+          * ``total_llm_tokens`` — prompt + completion (or total_tokens sum).
         """
         t0 = time.perf_counter()
         tool_calls = 0
+        prompt_tokens = 0
+        completion_tokens = 0
         found_files: list[str] = []
         found_symbols: list[str] = []
 
@@ -420,6 +425,11 @@ class DeepSeekBaselineAgent:
             data = response.json()
             choice = data["choices"][0]
             message = choice["message"]
+
+            # Accumulate token usage from the response (defensive: 0 if missing)
+            usage = data.get("usage") or {}
+            prompt_tokens += int(usage.get("prompt_tokens", 0))
+            completion_tokens += int(usage.get("completion_tokens", 0))
 
             # If the model produced text content (no tool calls), parse it
             # and finish.
@@ -480,6 +490,9 @@ class DeepSeekBaselineAgent:
             "found_symbols": found_symbols,
             "tool_calls": tool_calls,
             "total_time_ms": total_ms,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_llm_tokens": prompt_tokens + completion_tokens,
         }
 
 

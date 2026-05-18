@@ -989,9 +989,19 @@ async def _run_baseline_pass(
                 "p99_ms": round(metrics.query_latency_p99_ms, 1),
                 "mean_ms": round(metrics.query_latency_mean_ms, 1),
             },
+            "tokens": {
+                "avg": round(metrics.avg_response_tokens, 1),
+                "p50": round(metrics.p50_response_tokens, 1),
+                "p95": round(metrics.p95_response_tokens, 1),
+                "total": metrics.total_response_tokens,
+            },
         },
         "efficiency": {
             "avg_tool_calls": round(metrics.avg_tool_calls, 2),
+            "avg_prompt_tokens": round(metrics.avg_prompt_tokens, 1),
+            "avg_completion_tokens": round(metrics.avg_completion_tokens, 1),
+            "avg_total_llm_tokens": round(metrics.avg_total_llm_tokens, 1),
+            "total_llm_tokens": metrics.total_llm_tokens,
         },
         "composite_score": round(metrics.composite_score, 4),
         "method": "deepseek" if deepseek_used else "grep_glob",
@@ -1063,6 +1073,9 @@ async def _run_deepseek_baseline(
                 latency_ms=sr["total_time_ms"],
                 tool_calls=sr["tool_calls"],
                 repo=q.repo,
+                prompt_tokens=sr.get("prompt_tokens", 0),
+                completion_tokens=sr.get("completion_tokens", 0),
+                total_llm_tokens=sr.get("total_llm_tokens", 0),
             )
 
             qr.found_file = any(
@@ -1147,6 +1160,11 @@ def _compute_ab_deltas(
         rag_metrics.get("composite_score", 0) - baseline_metrics.get("composite_score", 0),
     )
 
+    # Response tokens: baseline - rag (positive = RAG saves context)
+    r_eff_tokens = r_eff.get("avg_response_tokens", 0.0)
+    b_eff_tokens = b_eff.get("avg_response_tokens", 0.0)
+    response_tokens_delta = _d(b_eff_tokens - r_eff_tokens, 1)
+
     return {
         "hit_at_5_delta": hit_at_5_delta,
         "symbol_hit_at_5_delta": symbol_hit_at_5_delta,
@@ -1156,4 +1174,5 @@ def _compute_ab_deltas(
         "latency_mean_delta": latency_mean_delta,
         "tool_calls_delta": tool_calls_delta,
         "composite_score_delta": composite_score_delta,
+        "response_tokens_delta": response_tokens_delta,
     }

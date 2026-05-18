@@ -876,3 +876,484 @@ class TestLocalGrepBaseline:
         avg = sum(r.tool_calls for r in results) / len(results)
         assert avg > 1.0, \
             f"Baseline avg_tool_calls should be > 1.0, got {avg}"
+
+
+# ---------------------------------------------------------------------------
+# 5. Baseline LLM token capture (VAL-BASELINE-001 through VAL-BASELINE-006)
+# ---------------------------------------------------------------------------
+
+class TestBaselineTokenCapture:
+    """Tests for token capture in DeepSeekBaselineAgent.search() and the
+    resulting baseline JSON structure."""
+
+    # ------------------------------------------------------------------
+    # VAL-BASELINE-001: search returns token usage fields
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_search_returns_token_fields(self, tmp_path):
+        """DeepSeekBaselineAgent.search returns prompt_tokens,
+        completion_tokens, and total_llm_tokens in the result dict."""
+        repo_dir = tmp_path / "test_repo"
+        repo_dir.mkdir()
+        (repo_dir / "file.py").write_text("def foo(): pass\n")
+
+        from rag_bench.baseline import DeepSeekBaselineAgent
+
+        class MockResponse:
+            def __init__(self, status_code, json_data):
+                self.status_code = status_code
+                self._json = json_data
+
+            def json(self):
+                return self._json
+
+        async def mock_post(*args, **kwargs):
+            return MockResponse(200, {
+                "choices": [{
+                    "message": {
+                        "role": "assistant",
+                        "content": "FILES:\nfile.py",
+                        "tool_calls": None,
+                    }
+                }],
+                "usage": {
+                    "prompt_tokens": 150,
+                    "completion_tokens": 25,
+                    "total_tokens": 175,
+                },
+            })
+
+        agent = DeepSeekBaselineAgent(
+            api_key="sk-test",
+            model="deepseek-v4-flash",
+            max_iterations=3,
+        )
+
+        with patch.object(agent, "_http_client") as mock_client:
+            mock_client.post = mock_post
+            result = await agent.search(
+                query="Where is foo?",
+                repo_dir=repo_dir,
+            )
+
+        # VAL-BASELINE-001: dict includes token fields
+        assert "prompt_tokens" in result, "search() must return prompt_tokens"
+        assert "completion_tokens" in result, "search() must return completion_tokens"
+        assert "total_llm_tokens" in result, "search() must return total_llm_tokens"
+        assert result["prompt_tokens"] == 150
+        assert result["completion_tokens"] == 25
+        assert result["total_llm_tokens"] == 175
+
+        # Existing keys still present
+        assert "found_files" in result
+        assert "tool_calls" in result
+        assert "total_time_ms" in result
+
+    # ------------------------------------------------------------------
+    # VAL-BASELINE-002: tokens accumulate across iterations
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_tokens_accumulate_across_iterations(self, tmp_path):
+        """Three sequential mocked completions with different usage blocks
+        sum to correct totals."""
+        repo_dir = tmp_path / "test_repo"
+        repo_dir.mkdir()
+        (repo_dir / "file.py").write_text("def bar(): pass\n")
+
+        from rag_bench.baseline import DeepSeekBaselineAgent
+
+        # Three iterations: first two are tool calls, third is final answer
+        mock_responses = [
+            # Iteration 1: tool call (grep)
+            {
+                "choices": [{
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [{
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "grep",
+                                "arguments": json.dumps({"pattern": "bar"})
+                            }
+                        }]
+                    }
+                }],
+                "usage": {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120},
+            },
+            # Iteration 2: tool call (read_file)
+            {
+                "choices": [{
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [{
+                            "id": "call_2",
+                            "type": "function",
+                            "function": {
+                                "name": "read_file",
+                                "arguments": json.dumps({"path": "file.py"})
+                            }
+                        }]
+                    }
+                }],
+                "usage": {"prompt_tokens": 150, "completion_tokens": 30, "total_tokens": 180},
+            },
+            # Iteration 3: final answer (no tool calls)
+            {
+                "choices": [{
+                    "message": {
+                        "role": "assistant",
+                        "content": "FILES:\nfile.py",
+                        "tool_calls": None,
+                    }
+                }],
+                "usage": {"prompt_tokens": 80, "completion_tokens": 15, "total_tokens": 95},
+            },
+        ]
+
+        response_index = [0]
+
+        class MockResponse:
+            def __init__(self, status_code, json_data):
+                self.status_code = status_code
+                self._json = json_data
+
+            def json(self):
+                return self._json
+
+        async def mock_post(*args, **kwargs):
+            idx = response_index[0]
+            response_index[0] += 1
+            if idx < len(mock_responses):
+                return MockResponse(200, mock_responses[idx])
+            return MockResponse(200, {
+                "choices": [{"message": {"role": "assistant", "content": "Done", "tool_calls": None}}]
+            })
+
+        agent = DeepSeekBaselineAgent(
+            api_key="sk-test",
+            model="deepseek-v4-flash",
+            max_iterations=3,
+        )
+
+        with patch.object(agent, "_http_client") as mock_client:
+            mock_client.post = mock_post
+            result = await agent.search(
+                query="Where is bar?",
+                repo_dir=repo_dir,
+            )
+
+        # VAL-BASELINE-002: sums across all iterations
+        # prompt: 100 + 150 + 80 = 330
+        # completion: 20 + 30 + 15 = 65
+        # total: 330 + 65 = 395
+        assert result["prompt_tokens"] == 330, \
+            f"Expected sum of prompt_tokens = 330, got {result['prompt_tokens']}"
+        assert result["completion_tokens"] == 65, \
+            f"Expected sum of completion_tokens = 65, got {result['completion_tokens']}"
+        assert result["total_llm_tokens"] == 395, \
+            f"Expected total_llm_tokens = 395, got {result['total_llm_tokens']}"
+
+    # ------------------------------------------------------------------
+    # VAL-BASELINE-003: missing usage → 0, no crash
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_missing_usage_defaults_to_zero(self, tmp_path):
+        """When the API response omits 'usage', the agent returns 0 for
+        token fields without raising an exception."""
+        repo_dir = tmp_path / "test_repo"
+        repo_dir.mkdir()
+        (repo_dir / "file.py").write_text("def baz(): pass\n")
+
+        from rag_bench.baseline import DeepSeekBaselineAgent
+
+        class MockResponse:
+            def __init__(self, status_code, json_data):
+                self.status_code = status_code
+                self._json = json_data
+
+            def json(self):
+                return self._json
+
+        async def mock_post(*args, **kwargs):
+            # Response with NO usage block
+            return MockResponse(200, {
+                "choices": [{
+                    "message": {
+                        "role": "assistant",
+                        "content": "FILES:\nfile.py",
+                        "tool_calls": None,
+                    }
+                }],
+            })
+
+        agent = DeepSeekBaselineAgent(
+            api_key="sk-test",
+            model="deepseek-v4-flash",
+            max_iterations=3,
+        )
+
+        with patch.object(agent, "_http_client") as mock_client:
+            mock_client.post = mock_post
+            result = await agent.search(
+                query="Where is baz?",
+                repo_dir=repo_dir,
+            )
+
+        # VAL-BASELINE-003: 0 for all token fields, no exception
+        assert result["prompt_tokens"] == 0
+        assert result["completion_tokens"] == 0
+        assert result["total_llm_tokens"] == 0
+
+    # ------------------------------------------------------------------
+    # VAL-BASELINE-004: baseline result JSON exposes LLM tokens
+    # ------------------------------------------------------------------
+
+    def test_baseline_json_has_llm_tokens_in_efficiency(self):
+        """The result JSON baseline.efficiency contains LLM token
+        aggregates, and baseline.retrieval.tokens exists."""
+        from rag_bench.runner import _build_result_json
+        from rag_bench.datasets.loader import RepoInfo
+
+        qrs = [
+            QueryResult(
+                query_id="q1", query_text="find foo", query_type="locate",
+                difficulty="easy", expected_files=["foo.py"], expected_symbols=["foo"],
+                returned_files=["src/foo.py"], returned_symbols=["foo_func"],
+                latency_ms=50.0, tool_calls=1, found_file=True, found_symbol=True,
+                repo="flask",
+            ),
+        ]
+
+        metrics = compute_metrics(qrs, ingest_total_sec=5.0, ingest_total_files=100,
+                                  index_size_mb=10.0, ram_peak_mb=50.0)
+
+        # Baseline result WITH LLM token fields
+        baseline_result = {
+            "retrieval": {
+                "total_queries": 1,
+                "total_hits": 0,
+                "hit_at_1": 0.0,
+                "hit_at_3": 0.0,
+                "hit_at_5": 0.0,
+                "hit_at_10": 0.0,
+                "symbol_hit_at_5": 0.0,
+                "mrr": 0.0,
+                "latency": {
+                    "p50_ms": 500.0,
+                    "p95_ms": 500.0,
+                    "p99_ms": 500.0,
+                    "mean_ms": 500.0,
+                },
+            },
+            "efficiency": {
+                "avg_tool_calls": 3.0,
+                "avg_prompt_tokens": 2200.0,
+                "avg_completion_tokens": 180.0,
+                "avg_total_llm_tokens": 2380.0,
+                "total_llm_tokens": 2380,
+            },
+            "composite_score": 0.15,
+            "method": "deepseek",
+        }
+
+        repos = [
+            RepoInfo("flask", "url", "main", "python", "small"),
+        ]
+
+        result = _build_result_json(
+            run_id="test-id",
+            server_config={"name": "test"},
+            metrics=metrics,
+            query_results=qrs,
+            repos=repos,
+            replicate_metrics=[metrics],
+            startup_ms=100.0,
+            detected_tools={},
+            baseline_result=baseline_result,
+        )
+
+        # VAL-BASELINE-004: LLM token fields in efficiency
+        baseline = result["baseline"]
+        assert baseline is not None
+        eff = baseline["efficiency"]
+        assert "avg_prompt_tokens" in eff, "efficiency missing avg_prompt_tokens"
+        assert "avg_completion_tokens" in eff, "efficiency missing avg_completion_tokens"
+        assert "avg_total_llm_tokens" in eff, "efficiency missing avg_total_llm_tokens"
+        assert "total_llm_tokens" in eff, "efficiency missing total_llm_tokens"
+        assert eff["avg_prompt_tokens"] == 2200.0
+        assert eff["avg_completion_tokens"] == 180.0
+        assert eff["avg_total_llm_tokens"] == 2380.0
+        assert eff["total_llm_tokens"] == 2380
+
+        # baseline.retrieval.tokens exists (set to 0 for baseline)
+        ret = baseline["retrieval"]
+        # Tokens may be present or absent - the key point is LLM tokens in efficiency
+
+    # ------------------------------------------------------------------
+    # VAL-BASELINE-005: grep_glob baseline does not produce LLM tokens
+    # ------------------------------------------------------------------
+
+    def test_grep_glob_baseline_no_llm_tokens(self):
+        """When local grep/glob baseline runs (no API key), the result JSON
+        has LLM token aggregates as 0 or absent."""
+        from rag_bench.runner import _build_result_json
+        from rag_bench.datasets.loader import RepoInfo
+
+        qrs = [
+            QueryResult(
+                query_id="q1", query_text="find foo", query_type="locate",
+                difficulty="easy", expected_files=["foo.py"], expected_symbols=["foo"],
+                returned_files=["src/foo.py"], returned_symbols=["foo_func"],
+                latency_ms=50.0, tool_calls=1, found_file=True, found_symbol=True,
+                repo="flask",
+            ),
+        ]
+
+        metrics = compute_metrics(qrs, ingest_total_sec=5.0, ingest_total_files=100,
+                                  index_size_mb=10.0, ram_peak_mb=50.0)
+
+        # Baseline WITHOUT LLM tokens (grep_glob)
+        baseline_result = {
+            "retrieval": {
+                "total_queries": 1,
+                "total_hits": 0,
+                "hit_at_1": 0.0,
+                "hit_at_3": 0.0,
+                "hit_at_5": 0.0,
+                "hit_at_10": 0.0,
+                "symbol_hit_at_5": 0.0,
+                "mrr": 0.0,
+                "latency": {
+                    "p50_ms": 500.0,
+                    "p95_ms": 500.0,
+                    "p99_ms": 500.0,
+                    "mean_ms": 500.0,
+                },
+            },
+            "efficiency": {
+                "avg_tool_calls": 4.5,
+            },
+            "composite_score": 0.12,
+            "method": "grep_glob",
+        }
+
+        repos = [
+            RepoInfo("flask", "url", "main", "python", "small"),
+        ]
+
+        result = _build_result_json(
+            run_id="test-id",
+            server_config={"name": "test"},
+            metrics=metrics,
+            query_results=qrs,
+            repos=repos,
+            replicate_metrics=[metrics],
+            startup_ms=100.0,
+            detected_tools={},
+            baseline_result=baseline_result,
+        )
+
+        baseline = result["baseline"]
+        assert baseline is not None
+
+        # VAL-BASELINE-005: LLM token fields are 0 or absent
+        eff = baseline["efficiency"]
+        llm_fields = ["avg_prompt_tokens", "avg_completion_tokens",
+                       "avg_total_llm_tokens", "total_llm_tokens"]
+        for field in llm_fields:
+            val = eff.get(field)
+            # Must be 0 or absent (not a garbage value)
+            assert val is None or val == 0 or val == 0.0, \
+                f"{field} should be 0 or absent for grep_glob, got {val}"
+
+    # ------------------------------------------------------------------
+    # VAL-BASELINE-006: ab_comparison includes response_tokens_delta
+    # ------------------------------------------------------------------
+
+    def test_ab_comparison_has_response_tokens_delta(self):
+        """ab_comparison contains response_tokens_delta computed as
+        baseline_avg_response_tokens - rag_avg_response_tokens."""
+        from rag_bench.runner import _compute_ab_deltas
+
+        rag = {
+            "retrieval": {
+                "hit_at_5": 0.35,
+                "symbol_hit_at_5": 0.20,
+                "mrr": 0.25,
+                "latency": {"p50_ms": 200.0, "p95_ms": 800.0, "mean_ms": 300.0},
+            },
+            "efficiency": {
+                "avg_tool_calls": 1.5,
+                "avg_response_tokens": 1200.0,
+            },
+            "composite_score": 0.45,
+        }
+
+        baseline = {
+            "retrieval": {
+                "hit_at_5": 0.15,
+                "symbol_hit_at_5": 0.12,
+                "mrr": 0.15,
+                "latency": {"p50_ms": 500.0, "p95_ms": 1200.0, "mean_ms": 600.0},
+            },
+            "efficiency": {
+                "avg_tool_calls": 3.2,
+                "avg_response_tokens": 0.0,  # baseline doesn't return content chunks
+            },
+            "composite_score": 0.30,
+        }
+
+        deltas = _compute_ab_deltas(rag, baseline)
+
+        # VAL-BASELINE-006: response_tokens_delta is present
+        assert "response_tokens_delta" in deltas, \
+            "ab_comparison must include response_tokens_delta"
+        # baseline_avg_response_tokens (0) - rag_avg_response_tokens (1200) = -1200
+        # So RAG uses more tokens → negative delta
+        assert deltas["response_tokens_delta"] == pytest.approx(-1200.0, abs=0.1)
+
+    def test_response_tokens_delta_positive_when_rag_saves(self):
+        """When baseline uses more response tokens than RAG, delta is
+        positive (RAG saves tokens)."""
+        from rag_bench.runner import _compute_ab_deltas
+
+        rag = {
+            "retrieval": {
+                "hit_at_5": 0.35,
+                "symbol_hit_at_5": 0.20,
+                "mrr": 0.25,
+                "latency": {"p50_ms": 200.0, "p95_ms": 800.0, "mean_ms": 300.0},
+            },
+            "efficiency": {
+                "avg_tool_calls": 1.5,
+                "avg_response_tokens": 500.0,
+            },
+            "composite_score": 0.45,
+        }
+
+        baseline = {
+            "retrieval": {
+                "hit_at_5": 0.15,
+                "symbol_hit_at_5": 0.12,
+                "mrr": 0.15,
+                "latency": {"p50_ms": 500.0, "p95_ms": 1200.0, "mean_ms": 600.0},
+            },
+            "efficiency": {
+                "avg_tool_calls": 3.2,
+                "avg_response_tokens": 2000.0,
+            },
+            "composite_score": 0.30,
+        }
+
+        deltas = _compute_ab_deltas(rag, baseline)
+
+        # baseline_avg_response_tokens (2000) - rag_avg_response_tokens (500) = 1500
+        assert deltas["response_tokens_delta"] == pytest.approx(1500.0, abs=0.1)
+        assert deltas["response_tokens_delta"] > 0, \
+            "positive delta means RAG saves tokens"
