@@ -14,8 +14,14 @@ from rag_bench.metrics import BenchmarkMetrics
 console = Console()
 
 
-def print_results_table(server_name: str, m: BenchmarkMetrics) -> None:
-    """Print benchmark results as a rich table."""
+def print_results_table(server_name: str, m: BenchmarkMetrics,
+                        baseline_result: dict | None = None) -> None:
+    """Print benchmark results as a rich table.
+
+    When *baseline_result* is provided and carries LLM token data in its
+    ``efficiency`` block, an additional "Baseline LLM Tokens" table is
+    rendered below the main "Tokens" table.
+    """
     console.print()
     console.print(Panel(f"[bold]rag-bench results: {server_name}[/bold]"))
 
@@ -110,6 +116,36 @@ def print_results_table(server_name: str, m: BenchmarkMetrics) -> None:
     tokens_table.add_row("p95", f"{m.p95_response_tokens:.1f}")
     tokens_table.add_row("total", str(m.total_response_tokens))
     console.print(tokens_table)
+
+    # Baseline LLM Tokens (only when baseline data is available)
+    if baseline_result is not None:
+        eff = baseline_result.get("efficiency") if baseline_result else None
+        if eff:
+            _render_baseline_llm_tokens(eff)
+
+
+def _fmt_val(val: float | int | None) -> str:
+    """Format a token value for display. None → 'N/A'."""
+    if val is None:
+        return "N/A"
+    if isinstance(val, float):
+        return f"{val:.1f}"
+    return str(val)
+
+
+def _render_baseline_llm_tokens(efficiency: dict) -> None:
+    """Render a 'Baseline LLM Tokens' table from baseline efficiency data."""
+    bl_table = Table(title="Baseline LLM Tokens", show_header=True)
+    bl_table.add_column("Metric", style="cyan")
+    bl_table.add_column("Value", style="green", justify="right")
+
+    bl_table.add_row("avg prompt", _fmt_val(efficiency.get("avg_prompt_tokens")))
+    bl_table.add_row("avg completion",
+                     _fmt_val(efficiency.get("avg_completion_tokens")))
+    bl_table.add_row("avg total LLM",
+                     _fmt_val(efficiency.get("avg_total_llm_tokens")))
+    bl_table.add_row("total LLM", _fmt_val(efficiency.get("total_llm_tokens")))
+    console.print(bl_table)
 
 
 def _fmt_tokens(r: dict, key: str) -> str:

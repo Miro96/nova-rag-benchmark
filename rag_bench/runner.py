@@ -478,7 +478,8 @@ async def run_benchmark(
     final_metrics.ram_peak_mb = ram_peak
 
     # Print results
-    print_results_table(server_config.get("name", "custom"), final_metrics)
+    print_results_table(server_config.get("name", "custom"), final_metrics,
+                        baseline_result=baseline_result)
 
     # Build result JSON
     server_info = getattr(client, "server_info", None) or {}
