@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -26,6 +26,7 @@ class Query:
     expected_symbols: list[str]
     difficulty: str
     repo: str
+    expected_content: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -104,6 +105,7 @@ def load_queries(repo_filter: str | None = None) -> list[Query]:
                 query=data["query"],
                 expected_files=data["expected_files"],
                 expected_symbols=data.get("expected_symbols", []),
+                expected_content=data.get("expected_content", []),
                 difficulty=data["difficulty"],
                 repo=repo_name,
             ))
