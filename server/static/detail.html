@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>rag-bench Query Detail</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #c9d1d9;
+            padding: 24px;
+        }
+        h1 {
+            font-size: 24px;
+            color: #58a6ff;
+            margin-bottom: 4px;
+        }
+        .server-info {
+            color: #8b949e;
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 16px;
+            color: #58a6ff;
+            text-decoration: none;
+            font-size: 13px;
+        }
+        .back-link:hover { text-decoration: underline; }
+        .controls {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        select {
+            background: #21262d;
+            color: #c9d1d9;
+            border: 1px solid #30363d;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        select:hover { border-color: #58a6ff; }
+        .filter-label {
+            font-size: 13px;
+            color: #8b949e;
+        }
+        .summary {
+            font-size: 13px;
+            color: #8b949e;
+            margin-bottom: 12px;
+        }
+        .summary span {
+            margin-right: 16px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th {
+            background: #161b22;
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid #30363d;
+            color: #8b949e;
+            white-space: nowrap;
+        }
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #21262d;
+        }
+        tr:hover { background: #161b22; }
+        tr.hidden { display: none; }
+        .hit { color: #3fb950; }
+        .miss { color: #f85149; }
+        .metric { font-variant-numeric: tabular-nums; }
+        .query-text {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .loading {
+            text-align: center;
+            padding: 48px;
+            color: #8b949e;
+        }
+        .error {
+            text-align: center;
+            padding: 48px;
+            color: #f85149;
+        }
+    </style>
+</head>
+<body>
+    <h1>Query Details</h1>
+    <div id="serverInfo" class="server-info">Loading...</div>
+    <a href="/" class="back-link">&larr; Back to leaderboard</a>
+
+    <div class="controls">
+        <span class="filter-label">Difficulty:</span>
+        <select id="difficultyFilter">
+            <option value="all">All</option>
+            <option value="easy">Easy</option>
+            <option value="medium">Medium</option>
+            <option value="hard">Hard</option>
+        </select>
+        <span class="filter-label">Type:</span>
+        <select id="typeFilter">
+            <option value="all">All</option>
+            <option value="locate">Locate</option>
+            <option value="callers">Callers</option>
+            <option value="explain">Explain</option>
+            <option value="impact">Impact</option>
+        </select>
+    </div>
+
+    <div id="summary" class="summary"></div>
+
+    <table id="queryTable">
+        <thead>
+            <tr>
+                <th>Query ID</th>
+                <th>Query Text</th>
+                <th>Type</th>
+                <th>Difficulty</th>
+                <th>File Hit</th>
+                <th>Symbol Hit</th>
+                <th>Chunk Hit</th>
+                <th>Latency (ms)</th>
+                <th>Tokens</th>
+            </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+    </table>
+
+    <div id="status" class="loading">Loading query data...</div>
+
+    <script>
+        let allQueries = [];
+
+        async function loadData() {
+            const params = new URLSearchParams(window.location.search);
+            const runId = params.get('run_id');
+            if (!runId) {
+                document.getElementById('status').className = 'error';
+                document.getElementById('status').textContent = 'No run_id specified in URL.';
+                return;
+            }
+
+            try {
+                // Fetch run metadata
+                const runRes = await fetch('/api/run/' + encodeURIComponent(runId));
+                if (!runRes.ok) {
+                    document.getElementById('status').className = 'error';
+                    document.getElementById('status').textContent = 'Run not found: ' + runId;
+                    return;
+                }
+                const runData = await runRes.json();
+                document.getElementById('serverInfo').textContent =
+                    'Server: ' + esc(runData.server_name || runId) +
+                    ' | Submitted: ' + (runData.submitted_at || 'unknown');
+
+                // Fetch queries
+                const queriesRes = await fetch('/api/run/' + encodeURIComponent(runId) + '/queries');
+                if (!queriesRes.ok) {
+                    document.getElementById('status').className = 'error';
+                    document.getElementById('status').textContent = 'Failed to load queries.';
+                    return;
+                }
+                allQueries = await queriesRes.json();
+                document.getElementById('status').style.display = 'none';
+                applyFilters();
+            } catch (e) {
+                document.getElementById('status').className = 'error';
+                document.getElementById('status').textContent = 'Error: ' + e.message;
+            }
+        }
+
+        function applyFilters() {
+            const diffFilter = document.getElementById('difficultyFilter').value;
+            const typeFilter = document.getElementById('typeFilter').value;
+
+            let filtered = allQueries;
+            let shownCount = 0;
+
+            if (diffFilter !== 'all') {
+                filtered = filtered.filter(q => q.difficulty === diffFilter);
+            }
+            if (typeFilter !== 'all') {
+                filtered = filtered.filter(q => q.type === typeFilter);
+            }
+            shownCount = filtered.length;
+
+            renderTable(filtered, shownCount);
+        }
+
+        function renderTable(queries, shownCount) {
+            const tbody = document.getElementById('tbody');
+            const summary = document.getElementById('summary');
+
+            if (allQueries.length === 0) {
+                summary.textContent = 'No query data available for this run.';
+                tbody.innerHTML = '';
+                return;
+            }
+
+            summary.innerHTML =
+                '<span>Showing ' + shownCount + ' of ' + allQueries.length + ' queries</span>';
+
+            tbody.innerHTML = queries.map(q => {
+                const fileHit = q.found_file
+                    ? '<span class="hit">&#10003;</span>'
+                    : '<span class="miss">&#10007;</span>';
+                const symHit = q.found_symbol
+                    ? '<span class="hit">&#10003;</span>'
+                    : '<span class="miss">&#10007;</span>';
+                const chunkHit = q.found_chunk
+                    ? '<span class="hit">&#10003;</span>'
+                    : '<span class="miss">&#10007;</span>';
+
+                return '<tr>' +
+                    '<td class="metric">' + esc(q.id || '') + '</td>' +
+                    '<td class="query-text" title="' + escAttr(q.query || '') + '">' + esc(q.query || '') + '</td>' +
+                    '<td>' + esc(q.type || '') + '</td>' +
+                    '<td>' + esc(q.difficulty || '') + '</td>' +
+                    '<td>' + fileHit + '</td>' +
+                    '<td>' + symHit + '</td>' +
+                    '<td>' + chunkHit + '</td>' +
+                    '<td class="metric">' + (q.latency_ms != null ? q.latency_ms.toFixed(1) : '-') + '</td>' +
+                    '<td class="metric">' + fmtTokens(q.response_tokens) + '</td>' +
+                    '</tr>';
+            }).join('');
+        }
+
+        function esc(s) {
+            if (s == null) return '';
+            const d = document.createElement('div');
+            d.textContent = String(s);
+            return d.innerHTML;
+        }
+
+        function escAttr(s) {
+            if (s == null) return '';
+            return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function fmtTokens(v) {
+            if (v == null || v === 0) return '0';
+            return Math.round(v).toLocaleString();
+        }
+
+        document.getElementById('difficultyFilter').addEventListener('change', applyFilters);
+        document.getElementById('typeFilter').addEventListener('change', applyFilters);
+
+        loadData();
+    </script>
+</body>
+</html>

@@ -59,6 +59,7 @@ class BenchmarkSubmission(BaseModel):
     composite_score: float = 0
     by_difficulty: dict = {}
     by_type: dict = {}
+    query_details: list[dict] = []
 
 
 class LeaderboardEntry(BaseModel):

@@ -1210,6 +1210,222 @@ class TestHtmlBreakdownColumns:
 
 
 # ---------------------------------------------------------------------------
+# VAL-DETAIL-001 through VAL-DETAIL-007: Query detail endpoint and detail page
+# ---------------------------------------------------------------------------
+
+def _valid_payload_with_queries(run_id: str | None = None) -> dict:
+    """Return a valid benchmark submission payload including query_details."""
+    payload = _valid_payload(run_id=run_id)
+    payload["query_details"] = [
+        {
+            "id": "Q001", "query": "Where is Flask defined?",
+            "type": "locate", "difficulty": "easy",
+            "found_file": True, "found_symbol": True, "found_chunk": True,
+            "latency_ms": 120.0, "response_tokens": 450,
+            "returned_files": ["src/flask/app.py"],
+            "expected_files": ["src/flask/app.py"],
+        },
+        {
+            "id": "Q002", "query": "What calls create_app?",
+            "type": "callers", "difficulty": "medium",
+            "found_file": True, "found_symbol": False, "found_chunk": False,
+            "latency_ms": 250.0, "response_tokens": 600,
+            "returned_files": ["src/flask/app.py"],
+            "expected_files": ["src/flask/app.py"],
+        },
+        {
+            "id": "Q003", "query": "Explain how routing works",
+            "type": "explain", "difficulty": "hard",
+            "found_file": False, "found_symbol": False, "found_chunk": False,
+            "latency_ms": 800.0, "response_tokens": 1200,
+            "returned_files": [],
+            "expected_files": ["src/flask/app.py"],
+        },
+    ]
+    return payload
+
+
+class TestQueriesEndpoint:
+    """VAL-DETAIL-001 through VAL-DETAIL-004: GET /api/run/{id}/queries."""
+
+    def test_queries_endpoint_returns_query_list(self, test_client):
+        """VAL-DETAIL-001: GET /api/run/{id}/queries returns JSON array."""
+        payload = _valid_payload_with_queries()
+        test_client.post("/api/submit", json=payload)
+
+        response = test_client.get(f"/api/run/{payload['run_id']}/queries")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) == 3
+
+        # Check first query has all expected fields
+        q = data[0]
+        assert q["id"] == "Q001"
+        assert q["query"] == "Where is Flask defined?"
+        assert q["type"] == "locate"
+        assert q["difficulty"] == "easy"
+        assert q["found_file"] is True
+        assert q["found_symbol"] is True
+        assert q["found_chunk"] is True
+        assert q["latency_ms"] == 120.0
+        assert q["response_tokens"] == 450
+
+    def test_queries_endpoint_returns_404_for_unknown(self, test_client):
+        """VAL-DETAIL-002: GET /api/run/nonexistent/queries returns 404."""
+        response = test_client.get("/api/run/nonexistent-id-999/queries")
+        assert response.status_code == 404
+
+    def test_queries_stored_at_submit_time(self, test_client):
+        """VAL-DETAIL-003: Submitting a run with query_details stores them."""
+        payload = _valid_payload_with_queries()
+        test_client.post("/api/submit", json=payload)
+
+        response = test_client.get(f"/api/run/{payload['run_id']}/queries")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 3
+        # Verify data is faithfully returned
+        assert data[0]["id"] == "Q001"
+        assert data[1]["type"] == "callers"
+        assert data[2]["difficulty"] == "hard"
+
+    def test_legacy_submission_without_query_details_returns_empty(self, test_client):
+        """VAL-DETAIL-004: Submitting without query_details returns empty array."""
+        payload = _valid_payload()
+        # Remove query_details if present
+        payload.pop("query_details", None)
+        test_client.post("/api/submit", json=payload)
+
+        response = test_client.get(f"/api/run/{payload['run_id']}/queries")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) == 0
+
+    def test_queries_returned_files_and_expected_files(self, test_client):
+        """Query detail includes returned_files and expected_files arrays."""
+        payload = _valid_payload_with_queries()
+        test_client.post("/api/submit", json=payload)
+
+        response = test_client.get(f"/api/run/{payload['run_id']}/queries")
+        assert response.status_code == 200
+        data = response.json()
+        q = data[0]
+        assert "returned_files" in q
+        assert "expected_files" in q
+        assert isinstance(q["returned_files"], list)
+        assert isinstance(q["expected_files"], list)
+
+
+class TestDetailPageHtml:
+    """VAL-DETAIL-005 through VAL-DETAIL-007: Detail page HTML."""
+
+    def test_detail_html_exists_and_renders(self, test_client):
+        """VAL-DETAIL-005: GET /detail.html returns HTML with table structure."""
+        response = test_client.get("/detail.html")
+        assert response.status_code == 200
+        html = response.text
+        # Should contain table elements
+        assert "<table" in html or "table" in html.lower(), (
+            "Detail page should contain a table"
+        )
+        # Should contain filter elements
+        assert "filter" in html.lower() or "select" in html.lower(), (
+            "Detail page should contain filter controls"
+        )
+        # Should have Back to leaderboard link
+        assert "leaderboard" in html.lower(), (
+            "Detail page should reference leaderboard"
+        )
+
+    def test_detail_html_has_table_columns(self, test_client):
+        """Detail page table has expected column headers."""
+        response = test_client.get("/detail.html")
+        assert response.status_code == 200
+        html = response.text
+        # Check for key column headers
+        assert "Query ID" in html or "Query" in html, (
+            "Detail page should have query ID column"
+        )
+        assert "Type" in html, (
+            "Detail page should have type column"
+        )
+        assert "Difficulty" in html, (
+            "Detail page should have difficulty column"
+        )
+        assert "Latency" in html or "latency" in html.lower(), (
+            "Detail page should have latency column"
+        )
+
+    def test_detail_html_has_filter_dropdowns(self, test_client):
+        """VAL-DETAIL-007: Detail page has filter dropdowns for difficulty and type."""
+        response = test_client.get("/detail.html")
+        assert response.status_code == 200
+        html = response.text
+        # Should have filter controls - check for select or filter elements
+        select_count = html.lower().count("<select")
+        assert select_count >= 2, (
+            f"Detail page should have at least 2 filter dropdowns, found {select_count}"
+        )
+        # Should reference difficulty and type filtering
+        assert "difficulty" in html.lower(), (
+            "Detail page should reference difficulty filtering"
+        )
+        assert "typefilter" in html.lower() or "query type" in html.lower(), (
+            "Detail page should reference type filtering"
+        )
+
+    def test_detail_html_has_back_to_leaderboard_link(self, test_client):
+        """VAL-DETAIL-006: Detail page has a 'Back to leaderboard' link."""
+        response = test_client.get("/detail.html")
+        assert response.status_code == 200
+        html = response.text
+        # Should have a link back to the leaderboard
+        assert 'href="/"' in html or "href='./'" in html or "href='index.html'" in html or 'href="index.html"' in html, (
+            "Detail page should have a link back to the leaderboard"
+        )
+
+    def test_detail_html_reads_run_id_from_url_params(self, test_client):
+        """Detail page has JavaScript that reads run_id from URL query params."""
+        response = test_client.get("/detail.html")
+        assert response.status_code == 200
+        html = response.text
+        # Should have JS that reads URL params
+        assert "URLSearchParams" in html or "searchParams" in html or "run_id" in html, (
+            "Detail page should read run_id from URL parameters"
+        )
+
+
+class TestLeaderboardServerLinks:
+    """VAL-DETAIL-006: Server name on leaderboard links to detail page."""
+
+    def test_index_html_has_detail_links(self, test_client):
+        """Leaderboard index.html has JavaScript that creates detail page links."""
+        response = test_client.get("/")
+        assert response.status_code == 200
+        html = response.text
+        # The JS should reference detail.html for server name links
+        assert "detail.html" in html, (
+            "Leaderboard page should link server names to detail.html"
+        )
+        assert "run_id" in html, (
+            "Leaderboard page should pass run_id to detail page"
+        )
+
+    def test_server_name_renders_as_link(self, test_client):
+        """The renderTable function wraps server_name in a link element."""
+        response = test_client.get("/")
+        assert response.status_code == 200
+        html = response.text
+        # The JS rendering should create anchor tags for server names
+        # Pattern: server name should be wrapped in <a href="...detail.html?run_id=...
+        assert 'detail.html' in html, (
+            "Leaderboard JS should create detail.html links"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 

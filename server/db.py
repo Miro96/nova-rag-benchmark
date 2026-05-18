@@ -256,3 +256,25 @@ async def get_run(run_id: str) -> dict | None:
         cursor = await db.execute("SELECT * FROM runs WHERE id = ?", (run_id,))
         row = await cursor.fetchone()
         return dict(row) if row else None
+
+
+async def get_queries(run_id: str) -> list[dict] | None:
+    """Get the stored query details for a run.
+
+    Returns the parsed JSON array of query objects, or None if the run
+    does not exist.
+    """
+    import json as _json
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT queries FROM runs WHERE id = ?", (run_id,)
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        try:
+            return _json.loads(row["queries"] or "[]")
+        except (_json.JSONDecodeError, TypeError):
+            return []

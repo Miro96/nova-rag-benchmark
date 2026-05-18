@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
 
-from server.db import DuplicateRunError, get_leaderboard, get_run, init_db, insert_run
+from server.db import DuplicateRunError, get_leaderboard, get_queries, get_run, init_db, insert_run
 from server.models import BenchmarkSubmission
 
 
@@ -78,6 +78,20 @@ async def run_detail(run_id: str):
     return _map_row(dict(run))
 
 
+@app.get("/api/run/{run_id}/queries")
+async def run_queries(run_id: str):
+    """Get per-query details for a specific run.
+
+    Returns a JSON array of query objects. Returns 404 if the run
+    does not exist. Returns an empty array (200) if the run exists
+    but has no query_details.
+    """
+    queries = await get_queries(run_id)
+    if queries is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    return queries
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index():
     """Serve the leaderboard HTML page."""
@@ -85,3 +99,12 @@ async def index():
     if html_path.exists():
         return html_path.read_text()
     return "<h1>rag-bench Leaderboard</h1><p>Static files not found.</p>"
+
+
+@app.get("/detail.html", response_class=HTMLResponse)
+async def detail_page():
+    """Serve the query detail page."""
+    html_path = STATIC_DIR / "detail.html"
+    if html_path.exists():
+        return html_path.read_text()
+    return "<h1>Query Detail</h1><p>Static files not found.</p>"

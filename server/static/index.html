@@ -218,9 +218,10 @@
             tbody.innerHTML = entries.map((e, i) => {
                 const rank = i + 1;
                 const rankClass = rank <= 3 ? `rank rank-${rank}` : 'rank';
+                const detailUrl = `detail.html?run_id=${encodeURIComponent(e.run_id || e.id)}`;
                 const name = e.git_url
                     ? `<a href="${esc(e.git_url)}" target="_blank">${esc(e.server_name)}</a>`
-                    : esc(e.server_name);
+                    : `<a href="${detailUrl}">${esc(e.server_name)}</a>`;
                 const user = e.git_user
                     ? `<a href="https://github.com/${esc(e.git_user)}" target="_blank">@${esc(e.git_user)}</a>`
                     : '-';
