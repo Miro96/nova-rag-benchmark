@@ -215,6 +215,25 @@
         var panel = document.getElementById('panel-overview');
         panel.innerHTML = '';
 
+        // --- Export buttons row ---
+        var exportRow = document.createElement('div');
+        exportRow.style.cssText = 'display:flex;gap:8px;margin-bottom:12px;justify-content:flex-end;';
+        var exportPngBtn = document.createElement('button');
+        exportPngBtn.className = 'btn';
+        exportPngBtn.textContent = 'Export PNG';
+        exportPngBtn.addEventListener('click', function () {
+            exportChart('overview-bar', 'png', runData.server_name + '-overview-metrics');
+        });
+        var exportSvgBtn = document.createElement('button');
+        exportSvgBtn.className = 'btn';
+        exportSvgBtn.textContent = 'Export SVG';
+        exportSvgBtn.addEventListener('click', function () {
+            exportChart('overview-bar', 'svg', runData.server_name + '-overview-metrics');
+        });
+        exportRow.appendChild(exportPngBtn);
+        exportRow.appendChild(exportSvgBtn);
+        panel.appendChild(exportRow);
+
         // --- Metrics bar chart ---
         var barDiv = chartDiv('overview-bar');
         panel.appendChild(barDiv);
@@ -232,6 +251,22 @@
         radarDiv.style.marginTop = '24px';
         panel.appendChild(radarDiv);
         renderRadar(radarDiv);
+    }
+
+    // ── Chart export helper ──
+    function exportChart(divId, format, baseName) {
+        var gd = document.getElementById(divId);
+        if (!gd) return;
+        Plotly.toImage(gd, { format: format, width: 1200, height: 800 }).then(function (dataUrl) {
+            var a = document.createElement('a');
+            a.download = baseName + '.' + format;
+            a.href = dataUrl;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }).catch(function (err) {
+            console.error('Export failed:', err);
+        });
     }
 
     function renderMetricsBar(div) {
@@ -566,18 +601,91 @@
     //  Per-Query Heatmap Tab
     // ═══════════════════════════════════════════════════════════
 
+    // ── Heatmap state (persisted across filter updates for Plotly.react) ──
+    var heatmapInitialized = false;
+    var heatmapDiffSelect = null;
+    var heatmapTypeSelect = null;
+    var heatmapNoDataP = null;
+
     function renderHeatmap(difficultyFilter, typeFilter) {
         var panel = document.getElementById('panel-heatmap');
+
+        // Normalize filters
+        difficultyFilter = difficultyFilter || 'all';
+        typeFilter = typeFilter || 'all';
+
+        if (heatmapInitialized) {
+            // ── Filter-change path (Plotly.react) ──
+            var filtered = queriesData.filter(function (q) {
+                if (difficultyFilter !== 'all' && (q.difficulty || 'unknown') !== difficultyFilter) return false;
+                if (typeFilter !== 'all' && (q.type || 'unknown') !== typeFilter) return false;
+                return true;
+            });
+
+            if (filtered.length === 0) {
+                document.getElementById('heatmap-plot').style.display = 'none';
+                if (heatmapNoDataP) heatmapNoDataP.style.display = '';
+                if (heatmapNoDataP) heatmapNoDataP.textContent = 'No queries match the selected filters.';
+                return;
+            }
+
+            document.getElementById('heatmap-plot').style.display = '';
+            if (heatmapNoDataP) heatmapNoDataP.style.display = 'none';
+
+            var maxLatency = 1;
+            var maxTokens = 1;
+            filtered.forEach(function (q) {
+                var l = safeNum(q.latency_ms);
+                var t = safeNum(q.response_tokens);
+                if (l > maxLatency) maxLatency = l;
+                if (t > maxTokens) maxTokens = t;
+            });
+
+            var z = filtered.map(function (q) {
+                return [
+                    q.found_file ? 1 : 0,
+                    q.found_symbol ? 1 : 0,
+                    q.found_chunk ? 1 : 0,
+                    safeNum(q.latency_ms) / (maxLatency || 1),
+                    safeNum(q.response_tokens) / (maxTokens || 1)
+                ];
+            });
+
+            var data = [{
+                type: 'heatmap',
+                y: filtered.map(function (q) { return q.id || '?'; }),
+                x: ['Found File', 'Found Symbol', 'Found Chunk', 'Latency (norm)', 'Tokens (norm)'],
+                z: z,
+                colorscale: [
+                    [0, '#161b22'],
+                    [0.5, '#1f6feb'],
+                    [1, '#3fb950']
+                ],
+                hovertemplate: 'Query: %{y}<br>%{x}: %{z:.2f}<extra></extra>',
+                colorbar: {
+                    title: { text: 'Value', font: { color: '#8b949e' } },
+                    tickfont: { color: '#8b949e' }
+                }
+            }];
+
+            var layout = plotlyLayout({
+                title: { text: 'Per-Query Metrics (n=' + filtered.length + ')', font: { size: 14 } },
+                xaxis: { side: 'top', tickfont: { color: '#c9d1d9', size: 11 }, gridcolor: '#30363d' },
+                yaxis: { tickfont: { color: '#8b949e', size: 10 }, gridcolor: '#30363d', automargin: true },
+                margin: { l: 120, r: 30, t: 80, b: 60 }
+            });
+
+            Plotly.react('heatmap-plot', data, layout, PLOTLY_CONFIG);
+            return;
+        }
+
+        // ── Initial setup ──
         panel.innerHTML = '';
 
         if (!queriesData || queriesData.length === 0) {
             panel.innerHTML = '<p style="color:#8b949e;padding:16px;">No query data available.</p>';
             return;
         }
-
-        // Normalize filters
-        difficultyFilter = difficultyFilter || 'all';
-        typeFilter = typeFilter || 'all';
 
         // Build filter controls
         var controlsDiv = document.createElement('div');
@@ -593,15 +701,15 @@
         var diffLabel = document.createElement('label');
         diffLabel.style.cssText = 'color:#8b949e;font-size:13px;';
         diffLabel.textContent = 'Difficulty: ';
-        var diffSelect = document.createElement('select');
+        heatmapDiffSelect = document.createElement('select');
         diffValues.forEach(function (v) {
             var opt = document.createElement('option');
             opt.value = v;
             opt.textContent = v.charAt(0).toUpperCase() + v.slice(1);
             if (v === difficultyFilter) opt.selected = true;
-            diffSelect.appendChild(opt);
+            heatmapDiffSelect.appendChild(opt);
         });
-        diffLabel.appendChild(diffSelect);
+        diffLabel.appendChild(heatmapDiffSelect);
         controlsDiv.appendChild(diffLabel);
 
         // Type filter
@@ -613,18 +721,24 @@
         var typeLabel = document.createElement('label');
         typeLabel.style.cssText = 'color:#8b949e;font-size:13px;';
         typeLabel.textContent = 'Type: ';
-        var typeSelect = document.createElement('select');
+        heatmapTypeSelect = document.createElement('select');
         typeValues.forEach(function (v) {
             var opt = document.createElement('option');
             opt.value = v;
             opt.textContent = v.charAt(0).toUpperCase() + v.slice(1);
             if (v === typeFilter) opt.selected = true;
-            typeSelect.appendChild(opt);
+            heatmapTypeSelect.appendChild(opt);
         });
-        typeLabel.appendChild(typeSelect);
+        typeLabel.appendChild(heatmapTypeSelect);
         controlsDiv.appendChild(typeLabel);
 
         panel.appendChild(controlsDiv);
+
+        // No-data message (hidden by default)
+        heatmapNoDataP = document.createElement('p');
+        heatmapNoDataP.style.cssText = 'color:#8b949e;padding:16px;display:none;';
+        heatmapNoDataP.textContent = 'No queries match the selected filters.';
+        panel.appendChild(heatmapNoDataP);
 
         // Filter queries
         var filtered = queriesData.filter(function (q) {
@@ -634,10 +748,7 @@
         });
 
         if (filtered.length === 0) {
-            panel.appendChild(document.createElement('p'));
-            panel.lastChild.style.cssText = 'color:#8b949e;padding:16px;';
-            panel.lastChild.textContent = 'No queries match the selected filters.';
-            return;
+            heatmapNoDataP.style.display = '';
         }
 
         // Heatmap: y = query_ids, x = metric columns
@@ -693,12 +804,14 @@
         }), PLOTLY_CONFIG);
 
         // Wire filter change events
-        diffSelect.addEventListener('change', function () {
-            renderHeatmap(diffSelect.value, typeSelect.value);
+        heatmapDiffSelect.addEventListener('change', function () {
+            renderHeatmap(heatmapDiffSelect.value, heatmapTypeSelect.value);
         });
-        typeSelect.addEventListener('change', function () {
-            renderHeatmap(diffSelect.value, typeSelect.value);
+        heatmapTypeSelect.addEventListener('change', function () {
+            renderHeatmap(heatmapDiffSelect.value, heatmapTypeSelect.value);
         });
+
+        heatmapInitialized = true;
     }
 
     // ═══════════════════════════════════════════════════════════
