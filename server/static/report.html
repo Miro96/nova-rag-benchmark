@@ -6,6 +6,7 @@
     <title>Run Report — rag-bench</title>
     <link rel="stylesheet" href="/static/styles.css">
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+    <script src="/static/common.js"></script>
     <style>
         /* Page-specific styles for the single-run report. */
         .page-header {
@@ -154,111 +155,6 @@
     </div>
 </div>
 
-<script>
-(function () {
-    'use strict';
-
-    // ── Extract run_id from URL path ──
-    var pathParts = window.location.pathname.split('/');
-    // pathname = "/run/{run_id}/report"
-    var runId = pathParts[2] || '';
-
-    // ── DOM refs ──
-    var loadingEl = document.getElementById('loadingState');
-    var errorEl = document.getElementById('errorState');
-    var errorDetailEl = document.getElementById('errorDetail');
-    var reportContentEl = document.getElementById('reportContent');
-    var reportTitleEl = document.getElementById('reportTitle');
-    var runMetaEl = document.getElementById('runMeta');
-    var tabs = document.querySelectorAll('[role="tab"]');
-    var panels = document.querySelectorAll('[role="tabpanel"]');
-
-    // ── Tab switching ──
-    function activateTab(tabId) {
-        var targetPanelId = null;
-        tabs.forEach(function (t) {
-            if (t.id === tabId) {
-                t.setAttribute('aria-selected', 'true');
-                targetPanelId = t.getAttribute('aria-controls');
-            } else {
-                t.setAttribute('aria-selected', 'false');
-            }
-        });
-        panels.forEach(function (p) {
-            if (p.id === targetPanelId) {
-                p.classList.add('visible');
-            } else {
-                p.classList.remove('visible');
-            }
-        });
-    }
-
-    tabs.forEach(function (tab) {
-        tab.addEventListener('click', function () {
-            activateTab(tab.id);
-        });
-        tab.addEventListener('keydown', function (e) {
-            var idx = Array.prototype.indexOf.call(tabs, tab);
-            var target = null;
-            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                e.preventDefault();
-                target = tabs[(idx + 1) % tabs.length];
-            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                e.preventDefault();
-                target = tabs[(idx - 1 + tabs.length) % tabs.length];
-            } else if (e.key === 'Home') {
-                e.preventDefault();
-                target = tabs[0];
-            } else if (e.key === 'End') {
-                e.preventDefault();
-                target = tabs[tabs.length - 1];
-            }
-            if (target) {
-                target.focus();
-                activateTab(target.id);
-            }
-        });
-    });
-
-    // ── Fetch run data ──
-    async function loadRun() {
-        try {
-            var res = await fetch('/api/run/' + encodeURIComponent(runId));
-            if (!res.ok) {
-                showError('Run &ldquo;' + esc(runId) + '&rdquo; was not found on this leaderboard. It may have been removed or the URL may be mistyped.');
-                return;
-            }
-            var run = await res.json();
-            loadingEl.style.display = 'none';
-            reportContentEl.style.display = '';
-
-            reportTitleEl.textContent = run.server_name || 'Run Report';
-            var submitted = run.submitted_at || '';
-            document.title = (run.server_name || 'Run') + ' Report — rag-bench';
-            runMetaEl.textContent = 'Run ' + esc(runId) + (submitted ? ' — submitted ' + esc(submitted) : '');
-        } catch (e) {
-            showError('Could not load run data. Please check your connection and try again.');
-            console.error(e);
-        }
-    }
-
-    function showError(msg) {
-        loadingEl.style.display = 'none';
-        errorEl.style.display = 'block';
-        reportContentEl.style.display = 'none';
-        errorDetailEl.innerHTML = msg;
-    }
-
-    function esc(s) {
-        if (s == null) return '';
-        var d = document.createElement('div');
-        d.textContent = String(s);
-        return d.innerHTML;
-    }
-
-    // ── Start ──
-    loadRun();
-})();
-</script>
+<script src="/static/report.js"></script>
 </body>
 </html>
