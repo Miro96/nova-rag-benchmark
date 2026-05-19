@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Run Report — rag-bench</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+    <style>
+        /* Page-specific styles for the single-run report. */
+        .page-header {
+            display: flex;
+            align-items: baseline;
+            gap: 16px;
+            margin-bottom: 4px;
+            flex-wrap: wrap;
+        }
+        .page-header h1 {
+            margin-bottom: 0;
+        }
+        .run-meta {
+            color: #8b949e;
+            font-size: 13px;
+            margin-bottom: 20px;
+        }
+        /* ── Tab strip ── */
+        .tablist {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid #30363d;
+            margin-bottom: 24px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .tablist button[role="tab"] {
+            background: transparent;
+            border: 1px solid transparent;
+            border-bottom: none;
+            border-radius: 6px 6px 0 0;
+            padding: 10px 18px;
+            font-size: 13px;
+            color: #8b949e;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .tablist button[role="tab"]:hover {
+            color: #c9d1d9;
+            background: #161b22;
+        }
+        .tablist button[role="tab"][aria-selected="true"] {
+            color: #58a6ff;
+            border-color: #30363d;
+            background: #0d1117;
+            position: relative;
+        }
+        .tablist button[role="tab"][aria-selected="true"]::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #58a6ff;
+        }
+        /* ── Tab panels ── */
+        .tabpanel {
+            display: none;
+            min-height: 200px;
+        }
+        .tabpanel.visible {
+            display: block;
+        }
+        .tabpanel .placeholder {
+            text-align: center;
+            padding: 48px 24px;
+            color: #8b949e;
+            font-size: 14px;
+            border: 1px dashed #30363d;
+            border-radius: 8px;
+        }
+        /* ── Error state ── */
+        #errorState {
+            display: none;
+            text-align: center;
+            padding: 64px 24px;
+        }
+        #errorState h2 {
+            font-size: 20px;
+            color: #f85149;
+            margin-bottom: 8px;
+        }
+        #errorState p {
+            color: #8b949e;
+            font-size: 14px;
+            margin-bottom: 24px;
+        }
+        /* ── Loading ── */
+        #loadingState {
+            text-align: center;
+            padding: 48px;
+            color: #8b949e;
+        }
+        /* ── Responsive guard ── */
+        .report-layout {
+            max-width: 1280px;
+            margin: 0 auto;
+            overflow-x: hidden;
+        }
+    </style>
+</head>
+<body>
+<div class="report-layout">
+    <a href="/" class="back-link">&larr; Back to leaderboard</a>
+
+    <div id="loadingState" class="loading">Loading run data&hellip;</div>
+
+    <div id="errorState">
+        <h2>Run not found</h2>
+        <p id="errorDetail">The requested run could not be loaded.</p>
+        <a href="/" class="back-link">&larr; Back to leaderboard</a>
+    </div>
+
+    <div id="reportContent" style="display:none;">
+        <div class="page-header">
+            <h1 id="reportTitle">Run Report</h1>
+        </div>
+        <p class="run-meta" id="runMeta"></p>
+
+        <!-- ── Tab strip ── -->
+        <div class="tablist" role="tablist" aria-label="Report sections">
+            <button role="tab" id="tab-overview" aria-selected="true" aria-controls="panel-overview">Overview</button>
+            <button role="tab" id="tab-breakdowns" aria-selected="false" aria-controls="panel-breakdowns">Breakdowns</button>
+            <button role="tab" id="tab-latency" aria-selected="false" aria-controls="panel-latency">Latency</button>
+            <button role="tab" id="tab-heatmap" aria-selected="false" aria-controls="panel-heatmap">Per-Query Heatmap</button>
+            <button role="tab" id="tab-statistics" aria-selected="false" aria-controls="panel-statistics">Statistics</button>
+        </div>
+
+        <!-- ── Tab panels ── -->
+        <div role="tabpanel" id="panel-overview" class="tabpanel visible" aria-labelledby="tab-overview">
+            <div class="placeholder">Overview charts will appear here.</div>
+        </div>
+        <div role="tabpanel" id="panel-breakdowns" class="tabpanel" aria-labelledby="tab-breakdowns">
+            <div class="placeholder">Breakdown charts will appear here.</div>
+        </div>
+        <div role="tabpanel" id="panel-latency" class="tabpanel" aria-labelledby="tab-latency">
+            <div class="placeholder">Latency charts will appear here.</div>
+        </div>
+        <div role="tabpanel" id="panel-heatmap" class="tabpanel" aria-labelledby="tab-heatmap">
+            <div class="placeholder">Per-Query Heatmap will appear here.</div>
+        </div>
+        <div role="tabpanel" id="panel-statistics" class="tabpanel" aria-labelledby="tab-statistics">
+            <div class="placeholder">Statistics tables and charts will appear here.</div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    // ── Extract run_id from URL path ──
+    var pathParts = window.location.pathname.split('/');
+    // pathname = "/run/{run_id}/report"
+    var runId = pathParts[2] || '';
+
+    // ── DOM refs ──
+    var loadingEl = document.getElementById('loadingState');
+    var errorEl = document.getElementById('errorState');
+    var errorDetailEl = document.getElementById('errorDetail');
+    var reportContentEl = document.getElementById('reportContent');
+    var reportTitleEl = document.getElementById('reportTitle');
+    var runMetaEl = document.getElementById('runMeta');
+    var tabs = document.querySelectorAll('[role="tab"]');
+    var panels = document.querySelectorAll('[role="tabpanel"]');
+
+    // ── Tab switching ──
+    function activateTab(tabId) {
+        var targetPanelId = null;
+        tabs.forEach(function (t) {
+            if (t.id === tabId) {
+                t.setAttribute('aria-selected', 'true');
+                targetPanelId = t.getAttribute('aria-controls');
+            } else {
+                t.setAttribute('aria-selected', 'false');
+            }
+        });
+        panels.forEach(function (p) {
+            if (p.id === targetPanelId) {
+                p.classList.add('visible');
+            } else {
+                p.classList.remove('visible');
+            }
+        });
+    }
+
+    tabs.forEach(function (tab) {
+        tab.addEventListener('click', function () {
+            activateTab(tab.id);
+        });
+        tab.addEventListener('keydown', function (e) {
+            var idx = Array.prototype.indexOf.call(tabs, tab);
+            var target = null;
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                target = tabs[(idx + 1) % tabs.length];
+            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                target = tabs[(idx - 1 + tabs.length) % tabs.length];
+            } else if (e.key === 'Home') {
+                e.preventDefault();
+                target = tabs[0];
+            } else if (e.key === 'End') {
+                e.preventDefault();
+                target = tabs[tabs.length - 1];
+            }
+            if (target) {
+                target.focus();
+                activateTab(target.id);
+            }
+        });
+    });
+
+    // ── Fetch run data ──
+    async function loadRun() {
+        try {
+            var res = await fetch('/api/run/' + encodeURIComponent(runId));
+            if (!res.ok) {
+                showError('Run &ldquo;' + esc(runId) + '&rdquo; was not found on this leaderboard. It may have been removed or the URL may be mistyped.');
+                return;
+            }
+            var run = await res.json();
+            loadingEl.style.display = 'none';
+            reportContentEl.style.display = '';
+
+            reportTitleEl.textContent = run.server_name || 'Run Report';
+            var submitted = run.submitted_at || '';
+            document.title = (run.server_name || 'Run') + ' Report — rag-bench';
+            runMetaEl.textContent = 'Run ' + esc(runId) + (submitted ? ' — submitted ' + esc(submitted) : '');
+        } catch (e) {
+            showError('Could not load run data. Please check your connection and try again.');
+            console.error(e);
+        }
+    }
+
+    function showError(msg) {
+        loadingEl.style.display = 'none';
+        errorEl.style.display = 'block';
+        reportContentEl.style.display = 'none';
+        errorDetailEl.innerHTML = msg;
+    }
+
+    function esc(s) {
+        if (s == null) return '';
+        var d = document.createElement('div');
+        d.textContent = String(s);
+        return d.innerHTML;
+    }
+
+    // ── Start ──
+    loadRun();
+})();
+</script>
+</body>
+</html>

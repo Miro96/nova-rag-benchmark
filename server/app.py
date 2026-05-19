@@ -196,3 +196,12 @@ async def detail_page():
     if html_path.exists():
         return html_path.read_text()
     return "<h1>Query Detail</h1><p>Static files not found.</p>"
+
+
+@app.get("/run/{run_id}/report", response_class=HTMLResponse)
+async def run_report(run_id: str):
+    """Serve the single-run report page with Plotly visualizations."""
+    html_path = STATIC_DIR / "report.html"
+    if html_path.exists():
+        return html_path.read_text()
+    return "<h1>Run Report</h1><p>Static files not found.</p>"
