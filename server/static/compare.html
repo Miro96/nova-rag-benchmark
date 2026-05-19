@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Run Comparison — rag-bench</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+    <script src="/static/common.js"></script>
+    <style>
+        /* Page-specific styles for the multi-run compare page. */
+        .page-header {
+            display: flex;
+            align-items: baseline;
+            gap: 16px;
+            margin-bottom: 4px;
+            flex-wrap: wrap;
+        }
+        .page-header h1 {
+            margin-bottom: 0;
+        }
+        .compare-meta {
+            color: #8b949e;
+            font-size: 13px;
+            margin-bottom: 24px;
+        }
+        .chart-section {
+            margin-bottom: 36px;
+        }
+        .chart-section h2 {
+            color: #8b949e;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .chart-container {
+            width: 100%;
+        }
+        /* ── Pairwise table ── */
+        .pair-section {
+            margin-bottom: 28px;
+        }
+        .pair-section h3 {
+            color: #58a6ff;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .pair-section table {
+            margin-bottom: 8px;
+        }
+        /* ── Error state ── */
+        #errorState {
+            display: none;
+            text-align: center;
+            padding: 64px 24px;
+        }
+        #errorState h2 {
+            font-size: 20px;
+            color: #f85149;
+            margin-bottom: 8px;
+        }
+        #errorState p {
+            color: #8b949e;
+            font-size: 14px;
+            margin-bottom: 24px;
+        }
+        /* ── Loading ── */
+        #loadingState {
+            text-align: center;
+            padding: 48px;
+            color: #8b949e;
+        }
+        /* ── Responsive guard ── */
+        .compare-layout {
+            max-width: 1280px;
+            margin: 0 auto;
+            overflow-x: hidden;
+        }
+        /* ── Run selector ── */
+        .run-selector {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+            align-items: center;
+        }
+        .run-selector label {
+            color: #8b949e;
+            font-size: 13px;
+        }
+        .run-selector select {
+            min-width: 200px;
+        }
+    </style>
+</head>
+<body>
+<div class="compare-layout">
+    <a href="/" class="back-link">&larr; Back to leaderboard</a>
+
+    <div id="loadingState" class="loading">Loading comparison data&hellip;</div>
+
+    <div id="errorState">
+        <h2>Comparison Error</h2>
+        <p id="errorDetail">Could not load comparison data.</p>
+        <a href="/" class="back-link">&larr; Back to leaderboard</a>
+    </div>
+
+    <div id="compareContent" style="display:none;">
+        <div class="page-header">
+            <h1 id="compareTitle">Multi-Run Comparison</h1>
+        </div>
+        <p class="compare-meta" id="compareMeta"></p>
+
+        <!-- ── (a) Multi-server radar chart ── -->
+        <div class="chart-section">
+            <h2>Multi-Server Radar Comparison</h2>
+            <div class="chart-container" id="radarChart"></div>
+        </div>
+
+        <!-- ── (b) Grouped bar chart ── -->
+        <div class="chart-section">
+            <h2>Grouped Metrics with Confidence Intervals</h2>
+            <div class="chart-container" id="groupedBarChart"></div>
+        </div>
+
+        <!-- ── (c) Heatmap matrix ── -->
+        <div class="chart-section">
+            <h2>Metrics Matrix (best per metric highlighted)</h2>
+            <div class="chart-container" id="heatmapChart"></div>
+        </div>
+
+        <!-- ── (d) A/B pairwise table ── -->
+        <div class="chart-section">
+            <h2>Pairwise A/B Comparison</h2>
+            <div id="pairwiseTable"></div>
+        </div>
+    </div>
+</div>
+
+<script src="/static/compare.js"></script>
+</body>
+</html>

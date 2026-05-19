@@ -303,3 +303,12 @@ async def run_report(run_id: str):
     if html_path.exists():
         return html_path.read_text()
     return "<h1>Run Report</h1><p>Static files not found.</p>"
+
+
+@app.get("/compare", response_class=HTMLResponse)
+async def compare_page():
+    """Serve the multi-run comparison page with Plotly visualizations."""
+    html_path = STATIC_DIR / "compare.html"
+    if html_path.exists():
+        return html_path.read_text()
+    return "<h1>Multi-Run Comparison</h1><p>Static files not found.</p>"
