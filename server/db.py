@@ -114,6 +114,17 @@ async def init_db() -> None:
                     f"ALTER TABLE runs ADD COLUMN {col_name} {col_def}"
                 )
 
+        stats_columns = [
+            ("stats_cached", "TEXT DEFAULT '{}'"),
+            ("stats_baseline_ab", "TEXT DEFAULT '{}'"),
+        ]
+
+        for col_name, col_def in stats_columns:
+            if col_name not in existing_columns:
+                await db.execute(
+                    f"ALTER TABLE runs ADD COLUMN {col_name} {col_def}"
+                )
+
         await db.commit()
 
 

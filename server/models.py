@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class ServerInfo(BaseModel):
@@ -47,6 +47,8 @@ class EfficiencyMetrics(BaseModel):
 
 
 class BenchmarkSubmission(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     run_id: str
     bench_version: str = ""
     dataset_version: str = ""
@@ -60,6 +62,22 @@ class BenchmarkSubmission(BaseModel):
     by_difficulty: dict = {}
     by_type: dict = {}
     query_details: list[dict] = []
+    replicates: list[dict] = []
+    iqr: dict = {}
+    by_repo: dict = {}
+    baseline: dict = {}
+    ab_comparison: dict = {}
+    startup_ms: float = 0
+
+    @model_validator(mode="after")
+    def validate_query_details_is_list(self) -> BenchmarkSubmission:
+        """Reject malformed query_details (e.g., non-list)."""
+        if not isinstance(self.query_details, list):
+            raise ValueError(
+                "query_details must be a list, "
+                f"got {type(self.query_details).__name__}"
+            )
+        return self
 
 
 class LeaderboardEntry(BaseModel):
