@@ -16,6 +16,7 @@ from server.db import (
     get_queries,
     get_run,
     get_runs_by_ids,
+    get_server_history,
     get_stats,
     init_db,
     insert_run,
@@ -179,6 +180,69 @@ async def recompute_stats(run_id: str):
     await update_stats(run_id, stats_cached_json, stats_baseline_ab_json)
 
     return {"status": "ok", "run_id": run_id}
+
+
+# ---------------------------------------------------------------------------
+# Server history (historical-trend milestone)
+# ---------------------------------------------------------------------------
+
+# Metrics that are higher-is-better (regression = prev drops by >5%)
+_HIGHER_IS_BETTER = {"composite_score", "hit_at_5", "symbol_hit_at_5", "mrr"}
+# Metrics that are lower-is-better (regression = curr increases by >5%)
+_LOWER_IS_BETTER = {"latency_p50_ms", "avg_response_tokens"}
+_HISTORY_METRICS = _HIGHER_IS_BETTER | _LOWER_IS_BETTER
+
+
+def _compute_regressions(entries: list[dict]) -> list[dict]:
+    """Add `regressions` map to every entry except the first.
+
+    Higher-is-better: (prev - curr) / prev > 0.05
+    Lower-is-better:  (curr - prev) / prev > 0.05
+    """
+    if not entries:
+        return entries
+
+    for i, entry in enumerate(entries):
+        if i == 0:
+            continue
+
+        prev = entries[i - 1]
+        regressions: dict[str, bool] = {}
+
+        for metric in _HIGHER_IS_BETTER:
+            prev_val = prev.get(metric, 0)
+            curr_val = entry.get(metric, 0)
+            if prev_val == 0:
+                regressions[metric] = False
+            else:
+                regressions[metric] = (prev_val - curr_val) / prev_val > 0.05
+
+        for metric in _LOWER_IS_BETTER:
+            prev_val = prev.get(metric, 0)
+            curr_val = entry.get(metric, 0)
+            if prev_val == 0:
+                regressions[metric] = False
+            else:
+                regressions[metric] = (curr_val - prev_val) / prev_val > 0.05
+
+        entry["regressions"] = regressions
+
+    return entries
+
+
+@app.get("/api/server/{server_name}/history")
+async def server_history(server_name: str):
+    """Get historical runs for a server, sorted by submitted_at ascending.
+
+    Each entry contains: run_id, submitted_at, composite_score, hit_at_5,
+    symbol_hit_at_5, mrr, latency_p50_ms, avg_response_tokens, dataset_version.
+
+    Non-first entries include a `regressions` object with boolean flags
+    computed via the >5% rule (direction-aware).
+    """
+    entries = await get_server_history(server_name)
+    entries = _compute_regressions(entries)
+    return entries
 
 
 @app.get("/api/compare")

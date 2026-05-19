@@ -407,6 +407,31 @@ async def update_stats(
         return cursor.rowcount > 0
 
 
+async def get_server_history(server_name: str) -> list[dict]:
+    """Get all runs for a server, sorted by submitted_at ascending.
+
+    Returns a list of dicts with keys: run_id, submitted_at, composite_score,
+    hit_at_5, symbol_hit_at_5, mrr, latency_p50_ms, avg_response_tokens,
+    dataset_version.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """
+            SELECT id AS run_id, submitted_at, composite_score,
+                   hit_at_5, symbol_hit_at_5, mrr,
+                   query_latency_p50_ms AS latency_p50_ms,
+                   avg_response_tokens, dataset_version
+            FROM runs
+            WHERE server_name = ?
+            ORDER BY submitted_at ASC
+            """,
+            (server_name,),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
 async def get_runs_by_ids(run_ids: list[str]) -> list[dict]:
     """Fetch key columns for multiple runs by their IDs.
 
