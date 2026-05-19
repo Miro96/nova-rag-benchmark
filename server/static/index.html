@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>rag-bench Leaderboard</title>
     <link rel="stylesheet" href="/static/styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <style>
         /* Page-specific overrides for the leaderboard index. */
         h1 {
@@ -37,14 +36,6 @@
         .good { color: #3fb950; }
         .mid { color: #d29922; }
         .bad { color: #f85149; }
-        .chart-container {
-            display: none;
-            margin: 24px 0;
-            max-width: 500px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-        .chart-container.visible { display: block; }
         .checkbox-cell { text-align: center; }
         input[type="checkbox"] {
             accent-color: #58a6ff;
@@ -89,7 +80,7 @@
                 <option value="by_type">By Type</option>
             </select>
         </label>
-        <button id="compareBtn" onclick="toggleChart()">Compare Selected</button>
+        <button id="compareBtn" onclick="navigateToCompare()">Compare Selected</button>
     </div>
 
     <table id="leaderboard">
@@ -119,18 +110,13 @@
         <tbody id="tbody"></tbody>
     </table>
 
-    <div class="chart-container" id="chartContainer">
-        <canvas id="radarChart"></canvas>
-    </div>
-
     <div class="compare-bar" id="compareBar">
-        <button onclick="toggleChart()">Compare Selected Servers</button>
+        <button onclick="navigateToCompare()">Compare Selected</button>
     </div>
 
     <script>
         let entries = [];
         let selected = new Set();
-        let chart = null;
         let currentSort = 'composite_score';
         let currentOrder = 'desc';
 
@@ -180,7 +166,7 @@
                     : '-';
 
                 return `<tr>
-                    <td class="checkbox-cell"><input type="checkbox" data-id="${e.id}" onchange="onSelect(this)" ${selected.has(e.id) ? 'checked' : ''}></td>
+                    <td class="checkbox-cell"><input type="checkbox" data-id="${e.run_id}" onchange="onSelect(this)" ${selected.has(e.run_id) ? 'checked' : ''}></td>
                     <td class="${rankClass}">${rank}</td>
                     <td>${name}</td>
                     <td>${user}</td>
@@ -243,67 +229,14 @@
             document.getElementById('compareBar').className = selected.size >= 2 ? 'compare-bar visible' : 'compare-bar';
         }
 
-        function toggleChart() {
-            const container = document.getElementById('chartContainer');
-            if (container.classList.contains('visible')) {
-                container.classList.remove('visible');
-                if (chart) { chart.destroy(); chart = null; }
-                return;
-            }
-
-            const selectedEntries = entries.filter(e => selected.has(e.id));
+        function navigateToCompare() {
+            const selectedEntries = entries.filter(e => selected.has(e.run_id));
             if (selectedEntries.length < 2) {
                 alert('Select at least 2 servers to compare');
                 return;
             }
-
-            container.classList.add('visible');
-            drawRadar(selectedEntries);
-        }
-
-        function drawRadar(data) {
-            if (chart) chart.destroy();
-
-            const labels = ['Hit@1', 'Hit@5', 'Symbol@5', 'MRR', 'Speed', 'Efficiency'];
-            const colors = ['#58a6ff', '#3fb950', '#d29922', '#f85149', '#bc8cff', '#79c0ff'];
-
-            const maxLat = Math.max(...data.map(d => d.query_latency_p95_ms || 1));
-
-            const datasets = data.map((d, i) => ({
-                label: d.server_name,
-                data: [
-                    d.hit_at_1,
-                    d.hit_at_5,
-                    d.symbol_hit_at_5,
-                    d.mrr,
-                    1 - (d.query_latency_p95_ms / maxLat),
-                    1 / (1 + d.avg_tool_calls),
-                ],
-                borderColor: colors[i % colors.length],
-                backgroundColor: colors[i % colors.length] + '20',
-                pointBackgroundColor: colors[i % colors.length],
-            }));
-
-            chart = new Chart(document.getElementById('radarChart'), {
-                type: 'radar',
-                data: { labels, datasets },
-                options: {
-                    responsive: true,
-                    scales: {
-                        r: {
-                            beginAtZero: true,
-                            max: 1,
-                            grid: { color: '#30363d' },
-                            angleLines: { color: '#30363d' },
-                            pointLabels: { color: '#8b949e', font: { size: 12 } },
-                            ticks: { display: false },
-                        }
-                    },
-                    plugins: {
-                        legend: { labels: { color: '#c9d1d9' } }
-                    }
-                }
-            });
+            const ids = selectedEntries.map(e => encodeURIComponent(e.run_id));
+            window.location.href = '/compare?run_ids=' + ids.join(',');
         }
 
         // Header sort
