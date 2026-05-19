@@ -6,6 +6,7 @@ and persist stats_cached / stats_baseline_ab JSON blobs for every run.
 from __future__ import annotations
 
 import json
+import math
 from typing import Any
 
 import numpy as np
@@ -41,6 +42,27 @@ _CORR_METRIC_KEYS = [
 
 # Bucket keys
 _BUCKET_KEYS = ["by_difficulty", "by_type", "by_repo"]
+
+
+# ---------------------------------------------------------------------------
+# JSON sanitization helper
+# ---------------------------------------------------------------------------
+
+def _sanitize_for_json(obj: Any) -> Any:
+    """Recursively replace NaN, Inf, -Inf with None so the dict is JSON-safe."""
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_for_json(v) for v in obj]
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+    return obj
+
+
+def _json_dumps_safe(obj: Any) -> str:
+    """json.dumps with NaN/Inf → null sanitation."""
+    return json.dumps(_sanitize_for_json(obj))
 
 
 # ---------------------------------------------------------------------------

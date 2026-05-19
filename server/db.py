@@ -219,6 +219,7 @@ async def insert_run(data: dict) -> str:
             from server.stats_cache import (
                 summary_stats_for_run,
                 detect_baseline_and_compute_ab,
+                _json_dumps_safe,
             )
 
             query_details = data.get("query_details") or []
@@ -227,7 +228,7 @@ async def insert_run(data: dict) -> str:
             by_type = data.get("by_type") or {}
             by_repo = data.get("by_repo") or {}
 
-            stats_cached_json = json.dumps(
+            stats_cached_json = _json_dumps_safe(
                 summary_stats_for_run(
                     query_details=query_details,
                     replicates=replicates,
@@ -239,7 +240,7 @@ async def insert_run(data: dict) -> str:
 
             # Baseline A/B detection
             baseline_ab = await detect_baseline_and_compute_ab(data, db)
-            stats_baseline_ab_json = json.dumps(baseline_ab) if baseline_ab else "{}"
+            stats_baseline_ab_json = _json_dumps_safe(baseline_ab) if baseline_ab else "{}"
 
             await db.execute(
                 "UPDATE runs SET stats_cached = ?, stats_baseline_ab = ? WHERE id = ?",
@@ -322,3 +323,85 @@ async def get_queries(run_id: str) -> list[dict] | None:
             return _json.loads(row["queries"] or "[]")
         except (_json.JSONDecodeError, TypeError):
             return []
+
+
+async def get_stats(run_id: str) -> tuple[dict, dict] | None:
+    """Read stats_cached and stats_baseline_ab for a run.
+
+    Returns (stats_cached_dict, stats_baseline_ab_dict) or None if the
+    run does not exist.
+    """
+    import json as _json
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT stats_cached, stats_baseline_ab FROM runs WHERE id = ?",
+            (run_id,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        try:
+            stats_cached = _json.loads(row["stats_cached"] or "{}")
+        except (_json.JSONDecodeError, TypeError):
+            stats_cached = {}
+        try:
+            stats_baseline_ab = _json.loads(row["stats_baseline_ab"] or "{}")
+        except (_json.JSONDecodeError, TypeError):
+            stats_baseline_ab = {}
+        return stats_cached, stats_baseline_ab
+
+
+async def get_full_run_data(run_id: str) -> dict | None:
+    """Get all columns needed for recomputation of stats.
+
+    Returns a dict with keys matching what summary_stats_for_run and
+    detect_baseline_and_compute_ab expect, or None if the run doesn't exist.
+    """
+    import json as _json
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT id, server_name, dataset_version, queries FROM runs WHERE id = ?",
+            (run_id,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+
+        try:
+            queries = _json.loads(row["queries"] or "[]")
+        except (_json.JSONDecodeError, TypeError):
+            queries = []
+
+        return {
+            "run_id": row["id"],
+            "server": {"name": row["server_name"]},
+            "dataset_version": row["dataset_version"] or "",
+            "query_details": queries,
+            "replicates": [],
+            "by_difficulty": {},
+            "by_type": {},
+            "by_repo": {},
+        }
+
+
+async def update_stats(
+    run_id: str,
+    stats_cached_json: str,
+    stats_baseline_ab_json: str,
+) -> bool:
+    """Write stats_cached and stats_baseline_ab back to the DB.
+
+    Returns True if the row was found and updated, False otherwise.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "UPDATE runs SET stats_cached = ?, stats_baseline_ab = ? WHERE id = ?",
+            (stats_cached_json, stats_baseline_ab_json, run_id),
+        )
+        await db.commit()
+        return cursor.rowcount > 0

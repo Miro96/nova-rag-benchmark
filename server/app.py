@@ -8,7 +8,17 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
 
-from server.db import DuplicateRunError, get_leaderboard, get_queries, get_run, init_db, insert_run
+from server.db import (
+    DuplicateRunError,
+    get_full_run_data,
+    get_leaderboard,
+    get_queries,
+    get_run,
+    get_stats,
+    init_db,
+    insert_run,
+    update_stats,
+)
 from server.models import BenchmarkSubmission
 
 
@@ -90,6 +100,80 @@ async def run_queries(run_id: str):
     if queries is None:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
     return queries
+
+
+@app.get("/api/run/{run_id}/stats")
+async def run_stats(run_id: str):
+    """Get cached statistics for a specific run.
+
+    Reads stats_cached and stats_baseline_ab from the database and merges
+    them into a single JSON response. Returns 404 if the run does not exist.
+    """
+    stats_tuple = await get_stats(run_id)
+    if stats_tuple is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+
+    stats_cached, stats_baseline_ab = stats_tuple
+
+    # Merge: add run_id and baseline_ab to the cached stats dict
+    # Treat empty baseline_ab dict as null
+    baseline_ab = stats_baseline_ab if stats_baseline_ab else None
+
+    return {
+        "run_id": run_id,
+        **stats_cached,
+        "baseline_ab": baseline_ab,
+    }
+
+
+@app.post("/api/run/{run_id}/recompute_stats")
+async def recompute_stats(run_id: str):
+    """Recompute and cache statistics for a specific run.
+
+    Reads the stored query_details and other data for the run, recomputes
+    stats_cached and stats_baseline_ab, and writes them back. Returns 404
+    if the run does not exist.
+    """
+    import json as _json
+
+    run_data = await get_full_run_data(run_id)
+    if run_data is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+
+    from server.stats_cache import (
+        _json_dumps_safe,
+        detect_baseline_and_compute_ab,
+        summary_stats_for_run,
+    )
+
+    query_details = run_data.get("query_details") or []
+    replicates = run_data.get("replicates") or []
+    by_difficulty = run_data.get("by_difficulty") or {}
+    by_type = run_data.get("by_type") or {}
+    by_repo = run_data.get("by_repo") or {}
+
+    stats_cached_json = _json_dumps_safe(
+        summary_stats_for_run(
+            query_details=query_details,
+            replicates=replicates,
+            by_difficulty=by_difficulty,
+            by_type=by_type,
+            by_repo=by_repo,
+        )
+    )
+
+    # Baseline A/B detection
+    import aiosqlite
+    from server.db import DB_PATH
+
+    async with aiosqlite.connect(DB_PATH) as db_conn:
+        baseline_ab = await detect_baseline_and_compute_ab(run_data, db_conn)
+
+    stats_baseline_ab_json = _json_dumps_safe(baseline_ab) if baseline_ab else "{}"
+
+    await update_stats(run_id, stats_cached_json, stats_baseline_ab_json)
+
+    return {"status": "ok", "run_id": run_id}
 
 
 @app.get("/", response_class=HTMLResponse)
