@@ -214,6 +214,39 @@ async def insert_run(data: dict) -> str:
                 ),
             )
             await db.commit()
+
+            # --- Compute and cache statistics ---
+            from server.stats_cache import (
+                summary_stats_for_run,
+                detect_baseline_and_compute_ab,
+            )
+
+            query_details = data.get("query_details") or []
+            replicates = data.get("replicates") or []
+            by_difficulty = data.get("by_difficulty") or {}
+            by_type = data.get("by_type") or {}
+            by_repo = data.get("by_repo") or {}
+
+            stats_cached_json = json.dumps(
+                summary_stats_for_run(
+                    query_details=query_details,
+                    replicates=replicates,
+                    by_difficulty=by_difficulty,
+                    by_type=by_type,
+                    by_repo=by_repo,
+                )
+            )
+
+            # Baseline A/B detection
+            baseline_ab = await detect_baseline_and_compute_ab(data, db)
+            stats_baseline_ab_json = json.dumps(baseline_ab) if baseline_ab else "{}"
+
+            await db.execute(
+                "UPDATE runs SET stats_cached = ?, stats_baseline_ab = ? WHERE id = ?",
+                (stats_cached_json, stats_baseline_ab_json, run_id),
+            )
+            await db.commit()
+
         except Exception as e:
             if "UNIQUE constraint failed: runs.id" in str(e):
                 raise DuplicateRunError(run_id) from e

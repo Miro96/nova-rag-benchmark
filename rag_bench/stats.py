@@ -5,6 +5,8 @@ Exports:
     wilson_ci(k, n, alpha=0.05)          → (ci_low, ci_high)
     normal_ci(mean, std, n, alpha=0.05)  → (ci_low, ci_high)
     pearson_correlation_matrix(rows, columns)  → ndarray
+    cohens_d(x, y)                        → float
+    cliffs_delta(x, y)                    → float
 """
 from __future__ import annotations
 
@@ -136,3 +138,77 @@ def pearson_correlation_matrix(
 
     stack = np.column_stack(arrays)  # shape (n, k)
     return np.corrcoef(stack, rowvar=False)
+
+
+# ---------------------------------------------------------------------------
+# Effect size
+# ---------------------------------------------------------------------------
+
+def cohens_d(x: ArrayLike, y: ArrayLike) -> float:
+    """Pooled Cohen's d for two independent samples.
+
+    d = (mean(x) - mean(y)) / s_pooled
+    s_pooled = sqrt(((n_x - 1) * var(x) + (n_y - 1) * var(y)) / (n_x + n_y - 2))
+
+    Parameters
+    ----------
+    x, y : sequences of numbers (same length expected for paired context).
+
+    Returns
+    -------
+    float : Cohen's d. Positive means x > y.
+    """
+    x_arr = np.asarray(x, dtype=np.float64)
+    y_arr = np.asarray(y, dtype=np.float64)
+    n_x, n_y = len(x_arr), len(y_arr)
+
+    if n_x < 2 and n_y < 2:
+        return 0.0
+
+    mean_x = np.mean(x_arr)
+    mean_y = np.mean(y_arr)
+    var_x = np.var(x_arr, ddof=1) if n_x > 1 else 0.0
+    var_y = np.var(y_arr, ddof=1) if n_y > 1 else 0.0
+
+    if n_x + n_y <= 2:
+        return 0.0
+
+    s_pooled = np.sqrt(
+        ((n_x - 1) * var_x + (n_y - 1) * var_y) / (n_x + n_y - 2)
+    )
+    if s_pooled == 0:
+        return 0.0
+    return float((mean_x - mean_y) / s_pooled)
+
+
+def cliffs_delta(x: ArrayLike, y: ArrayLike) -> float:
+    """Cliff's delta — a non-parametric effect-size measure.
+
+    delta = (#(x_i > y_j) - #(x_i < y_j)) / (n_x * n_y)
+
+    Returns a value in [-1, 1].  Positive means x tends to be larger
+    than y.  A value of 1.0 means every x_i > every y_j.
+
+    Parameters
+    ----------
+    x, y : sequences of comparable values.
+
+    Returns
+    -------
+    float : Cliff's delta.
+    """
+    x_arr = np.asarray(x, dtype=np.float64)
+    y_arr = np.asarray(y, dtype=np.float64)
+    n_x, n_y = len(x_arr), len(y_arr)
+    if n_x == 0 or n_y == 0:
+        return 0.0
+
+    greater = 0
+    less = 0
+    # Vectorised comparison
+    for xi in x_arr:
+        greater += int(np.sum(xi > y_arr))
+        less += int(np.sum(xi < y_arr))
+
+    denom = n_x * n_y * 1.0
+    return float((greater - less) / denom)
