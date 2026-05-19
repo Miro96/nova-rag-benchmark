@@ -405,3 +405,57 @@ async def update_stats(
         )
         await db.commit()
         return cursor.rowcount > 0
+
+
+async def get_runs_by_ids(run_ids: list[str]) -> list[dict]:
+    """Fetch key columns for multiple runs by their IDs.
+
+    Returns a list of dicts with keys:
+    run_id, server_name, hit_at_5, mrr, query_latency_p50_ms,
+    queries (parsed JSON list), stats_cached (parsed JSON dict).
+
+    Missing / non-existent runs are silently omitted from the result.
+    """
+    import json as _json
+
+    if not run_ids:
+        return []
+
+    placeholders = ",".join("?" for _ in run_ids)
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        # Use explicit column selection to match the compare API needs
+        cursor = await db.execute(
+            f"""
+            SELECT id, server_name, hit_at_5, mrr, query_latency_p50_ms,
+                   queries, stats_cached
+            FROM runs
+            WHERE id IN ({placeholders})
+            """,
+            run_ids,
+        )
+        rows = await cursor.fetchall()
+
+    result: list[dict] = []
+    for row in rows:
+        queries_raw = row["queries"] or "[]"
+        stats_raw = row["stats_cached"] or "{}"
+        try:
+            queries = _json.loads(queries_raw)
+        except (_json.JSONDecodeError, TypeError):
+            queries = []
+        try:
+            stats = _json.loads(stats_raw)
+        except (_json.JSONDecodeError, TypeError):
+            stats = {}
+        result.append({
+            "run_id": row["id"],
+            "server_name": row["server_name"],
+            "hit_at_5": row["hit_at_5"],
+            "mrr": row["mrr"],
+            "query_latency_p50_ms": row["query_latency_p50_ms"],
+            "query_details": queries,
+            "stats_cached": stats,
+        })
+    return result

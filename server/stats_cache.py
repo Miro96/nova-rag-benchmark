@@ -522,3 +522,203 @@ async def detect_baseline_and_compute_ab(
         "delta": delta_dict,
         "test_used": test_used,
     }
+
+
+# ---------------------------------------------------------------------------
+# Multi-run pairwise comparison (for GET /api/compare)
+# ---------------------------------------------------------------------------
+
+# Metrics required by the compare API
+_COMPARE_BINARY_METRICS = ["hit_at_5"]
+_COMPARE_CONTINUOUS_METRICS = ["mrr", "query_latency_p50_ms"]
+
+
+def _per_query_binary(qd: dict, metric: str) -> int:
+    """Extract binary outcome for a compare metric."""
+    if metric == "hit_at_5":
+        return 1 if qd.get("found_file") else 0
+    return 0
+
+
+def _per_query_continuous(qd: dict, metric: str) -> float:
+    """Extract continuous value for a compare metric."""
+    if metric == "mrr":
+        return _per_query_mrr(qd)
+    elif metric == "query_latency_p50_ms":
+        # Use per-query latency for the paired test
+        return float(qd.get("latency_ms", 0) or 0)
+    return 0.0
+
+
+def _paired_mean_diff_ci(
+    a_vals: list[float], b_vals: list[float], alpha: float = 0.05
+) -> tuple[float, float, float]:
+    """Compute mean difference and its 95% CI using paired t-interval.
+
+    Returns (mean_diff, ci_low, ci_high).
+    """
+    n = len(a_vals)
+    if n < 2:
+        return 0.0, 0.0, 0.0
+
+    diffs = np.array(b_vals, dtype=np.float64) - np.array(a_vals, dtype=np.float64)
+    mean_diff = float(np.mean(diffs))
+    std_diff = float(np.std(diffs, ddof=1))
+    se = std_diff / math.sqrt(n)
+    df = n - 1
+    try:
+        from scipy.stats import t as _t
+        t_crit = float(_t.ppf(1 - alpha / 2, df=df))
+    except Exception:
+        from scipy.stats import norm as _norm
+        t_crit = float(_norm.ppf(1 - alpha / 2))
+    margin = t_crit * se
+    return round(mean_diff, 8), round(mean_diff - margin, 8), round(mean_diff + margin, 8)
+
+
+def _binary_proportion_diff_ci(
+    a_vals: list[int], b_vals: list[int], alpha: float = 0.05
+) -> tuple[float, float, float]:
+    """Compute difference in proportions and its CI (normal approximation).
+
+    Returns (prop_diff, ci_low, ci_high).
+    """
+    n = len(a_vals)
+    if n == 0:
+        return 0.0, 0.0, 0.0
+
+    p_a = sum(a_vals) / n
+    p_b = sum(b_vals) / n
+    delta = p_b - p_a
+
+    if n == 1 or (p_a == 0 and p_b == 0) or (p_a == 1 and p_b == 1):
+        return round(delta, 8), round(delta, 8), round(delta, 8)
+
+    try:
+        from scipy.stats import norm as _norm
+        z = float(_norm.ppf(1 - alpha / 2))
+    except Exception:
+        z = 1.96
+
+    se = math.sqrt(p_a * (1 - p_a) / n + p_b * (1 - p_b) / n)
+    margin = z * se
+    return round(delta, 8), round(delta - margin, 8), round(delta + margin, 8)
+
+
+def compute_pairwise_stats(runs_data: list[dict]) -> dict[str, dict]:
+    """Compute pairwise A/B statistics for all unordered pairs of runs.
+
+    Parameters
+    ----------
+    runs_data : list of dicts, each containing at least:
+        run_id, query_details (list of per-query dicts)
+
+    Returns
+    -------
+    dict keyed by "runA,runB" (the two run_ids joined by comma, preserving
+    the order from runs_data), each value being a per-metric dict with
+    delta, delta_ci_lo, delta_ci_hi, p_value, cohens_d, cliffs_delta.
+    """
+    if len(runs_data) < 2:
+        return {}
+
+    # Build lookup by run_id for quick access
+    runs_by_id: dict[str, dict] = {
+        rd["run_id"]: rd for rd in runs_data
+    }
+
+    result: dict[str, dict] = {}
+
+    all_metrics = _COMPARE_BINARY_METRICS + _COMPARE_CONTINUOUS_METRICS
+
+    for i in range(len(runs_data)):
+        for j in range(i + 1, len(runs_data)):
+            run_a = runs_data[i]
+            run_b = runs_data[j]
+            qds_a = run_a.get("query_details") or []
+            qds_b = run_b.get("query_details") or []
+
+            # Build lookup by query id
+            a_by_id = {q["id"]: q for q in qds_a if "id" in q}
+            b_by_id = {q["id"]: q for q in qds_b if "id" in q}
+
+            common_ids = sorted(set(a_by_id) & set(b_by_id))
+
+            pair_key = f"{run_a['run_id']},{run_b['run_id']}"
+            pair_result: dict[str, dict] = {}
+
+            for metric in all_metrics:
+                if not common_ids:
+                    pair_result[metric] = {
+                        "delta": None,
+                        "delta_ci_lo": None,
+                        "delta_ci_hi": None,
+                        "p_value": None,
+                        "cohens_d": None,
+                        "cliffs_delta": None,
+                    }
+                    continue
+
+                if metric in _COMPARE_BINARY_METRICS:
+                    # --- Binary metric: McNemar ---
+                    a_vals = [_per_query_binary(a_by_id[qid], metric) for qid in common_ids]
+                    b_vals = [_per_query_binary(b_by_id[qid], metric) for qid in common_ids]
+
+                    # Build contingency table
+                    b_disc = 0  # a hit, b miss
+                    c_disc = 0  # a miss, b hit
+                    for av, bv in zip(a_vals, b_vals):
+                        if av == 1 and bv == 0:
+                            b_disc += 1
+                        elif av == 0 and bv == 1:
+                            c_disc += 1
+
+                    if b_disc + c_disc == 0:
+                        p_val = 1.0
+                    else:
+                        p_val = _mcnemar_pvalue(b_disc, c_disc, correction=True)
+
+                    delta, ci_lo, ci_hi = _binary_proportion_diff_ci(a_vals, b_vals)
+
+                    # Cohen's d for binary data
+                    a_arr = np.array(a_vals, dtype=np.float64)
+                    b_arr = np.array(b_vals, dtype=np.float64)
+                    cd = cohens_d(b_arr, a_arr)
+                    cld = cliffs_delta(b_arr, a_arr)
+
+                else:
+                    # --- Continuous metric: Wilcoxon ---
+                    a_vals_f = [_per_query_continuous(a_by_id[qid], metric) for qid in common_ids]
+                    b_vals_f = [_per_query_continuous(b_by_id[qid], metric) for qid in common_ids]
+
+                    a_arr = np.array(a_vals_f, dtype=np.float64)
+                    b_arr = np.array(b_vals_f, dtype=np.float64)
+
+                    if np.allclose(a_arr, b_arr) or np.array_equal(a_arr, b_arr):
+                        p_val = 1.0
+                        cd = 0.0
+                        cld = 0.0
+                    else:
+                        try:
+                            w_result = wilcoxon(a_arr, b_arr, zero_method="wilcox",
+                                                alternative="two-sided")
+                            p_val = float(w_result.pvalue)
+                        except Exception:
+                            p_val = None
+                        cd = cohens_d(b_arr, a_arr)
+                        cld = cliffs_delta(b_arr, a_arr)
+
+                    delta, ci_lo, ci_hi = _paired_mean_diff_ci(a_vals_f, b_vals_f)
+
+                pair_result[metric] = {
+                    "delta": delta,
+                    "delta_ci_lo": ci_lo,
+                    "delta_ci_hi": ci_hi,
+                    "p_value": round(p_val, 8) if p_val is not None else None,
+                    "cohens_d": round(cd, 8) if cd is not None else None,
+                    "cliffs_delta": round(cld, 8) if cld is not None else None,
+                }
+
+            result[pair_key] = pair_result
+
+    return result
