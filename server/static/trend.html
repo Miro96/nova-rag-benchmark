@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historical Trend — rag-bench</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+    <script src="/static/common.js"></script>
+    <style>
+        /* Page-specific styles for the historical trend page. */
+        .page-header {
+            display: flex;
+            align-items: baseline;
+            gap: 16px;
+            margin-bottom: 4px;
+            flex-wrap: wrap;
+        }
+        .page-header h1 {
+            margin-bottom: 0;
+        }
+        .trend-meta {
+            color: #8b949e;
+            font-size: 13px;
+            margin-bottom: 20px;
+        }
+        .chart-container {
+            width: 100%;
+        }
+        .chart-section {
+            margin-bottom: 24px;
+        }
+        .filter-row {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .filter-row label {
+            color: #8b949e;
+            font-size: 13px;
+        }
+        .filter-row select {
+            min-width: 180px;
+        }
+        #versionFilter[hidden] {
+            display: none;
+        }
+        /* Legend hint */
+        .legend-hint {
+            display: flex;
+            gap: 18px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+            font-size: 12px;
+            color: #8b949e;
+        }
+        .legend-hint span {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .legend-hint .dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        .legend-hint .dot.regression { background: #f85149; }
+        .legend-hint .dot.improvement { background: #3fb950; }
+    </style>
+</head>
+<body>
+    <a href="/" class="back-link">&larr; Back to leaderboard</a>
+
+    <div id="loadingState" class="loading">Loading trend data&hellip;</div>
+
+    <div id="errorState" style="display:none;">
+        <div class="empty">
+            <h2>No runs found</h2>
+            <p id="errorDetail">There are no benchmark runs for this server yet.</p>
+            <p style="margin-top:16px;"><a href="/" class="back-link">&larr; Back to leaderboard</a></p>
+        </div>
+    </div>
+
+    <div id="trendContent" style="display:none;">
+        <div class="page-header">
+            <h1 id="trendTitle"></h1>
+        </div>
+        <p class="trend-meta" id="trendMeta"></p>
+
+        <div class="filter-row">
+            <label for="versionFilter">Dataset Version:</label>
+            <select id="versionFilter" hidden>
+                <option value="all">All</option>
+            </select>
+        </div>
+
+        <div class="legend-hint">
+            <span><span class="dot regression"></span> Regression (&gt;5%)</span>
+            <span><span class="dot improvement"></span> Improvement (&gt;5%)</span>
+        </div>
+
+        <div class="chart-section">
+            <div class="chart-container" id="trendChart"></div>
+        </div>
+    </div>
+
+    <script src="/static/trend.js"></script>
+</body>
+</html>

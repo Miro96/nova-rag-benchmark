@@ -376,3 +376,12 @@ async def compare_page():
     if html_path.exists():
         return html_path.read_text()
     return "<h1>Multi-Run Comparison</h1><p>Static files not found.</p>"
+
+
+@app.get("/server/{server_name}/trend", response_class=HTMLResponse)
+async def server_trend(server_name: str):
+    """Serve the historical trend page for a specific server."""
+    html_path = STATIC_DIR / "trend.html"
+    if html_path.exists():
+        return html_path.read_text()
+    return "<h1>Historical Trend</h1><p>Static files not found.</p>"
