@@ -60,12 +60,23 @@ Honest read of this table:
   semantic-search gains concentrate on **large** codebases. Accuracy
   deltas should be measured on 100K+ LOC repos (planned; PRs adding a
   large-repo query set are very welcome).
-- **The wins on a small repo are speed and efficiency:** the agent
-  answers a third faster, in fewer turns, using fewer tokens — because
-  one `code_search`/`rag_graph` call replaces a grep→read→grep chain.
 - 2 of 70 runs errored (one subprocess timeout, one transient CLI
   error); they are excluded from aggregates and visible in the raw JSON
   (`results/agent_express_sonnet46.json`).
+
+**Update (v2 runs, with tool-call logging):** the v1 latency win
+(−36% on Express) **did not reproduce** — v2 measured ~parity on both
+Express and a private 2,370-file C# monorepo (raw JSON committed). The
+new per-call tool logging explains why: **MCP adoption was only 9–18%**
+— the agent answered most questions with built-in Grep/Bash/Read and
+never invoked the MCP tools, so v1's speed delta was run-to-run
+variance, not a product effect. Transcripts show a consistent
+`ToolSearch → mcp__…` pattern: in current Claude Code versions MCP tool
+schemas are deferred behind the ToolSearch meta-tool, so the model never
+sees the MCP tool descriptions at decision time. Notable: in the 8
+queries where the agent *did* route through nova-rag, **8/8 answers were
+correct**. Conclusion: tool *visibility*, not retrieval quality, is the
+current bottleneck — measure adoption before believing any A/B delta.
 
 ### Second run (Django 5.2, ~350K LOC) — and a methodology lesson
 
