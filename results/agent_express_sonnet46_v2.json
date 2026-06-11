@@ -14,8 +14,8 @@
     "baseline": {
       "queries": 35,
       "errors": 0,
-      "accuracy": 0.9714,
-      "file_accuracy": 0.9714,
+      "accuracy": 1.0,
+      "file_accuracy": 1.0,
       "symbol_accuracy": 1.0,
       "judge_accuracy": null,
       "tokens_mean": 611.9,
@@ -54,7 +54,7 @@
         },
         "locate": {
           "queries": 16,
-          "accuracy": 0.9375
+          "accuracy": 1.0
         },
         "multi_hop": {
           "queries": 1,
@@ -69,8 +69,8 @@
     "nova-rag": {
       "queries": 35,
       "errors": 0,
-      "accuracy": 0.9714,
-      "file_accuracy": 0.9714,
+      "accuracy": 1.0,
+      "file_accuracy": 1.0,
       "symbol_accuracy": 1.0,
       "judge_accuracy": null,
       "tokens_mean": 675.8,
@@ -111,7 +111,7 @@
         },
         "locate": {
           "queries": 16,
-          "accuracy": 0.9375
+          "accuracy": 1.0
         },
         "multi_hop": {
           "queries": 1,
@@ -694,9 +694,9 @@
       "difficulty": "easy",
       "condition": "baseline",
       "answer": "The `Route` class is defined in **`node_modules/router/lib/route.js:41`** as `function Route(path)`. Within this repo, it is re-exported at **`lib/express.js:70`** via `exports.Route = Router.Route`.",
-      "file_hit": false,
+      "file_hit": true,
       "symbol_hit": true,
-      "correct": false,
+      "correct": true,
       "judge_correct": null,
       "input_tokens": 9,
       "output_tokens": 700,
@@ -717,9 +717,9 @@
       "difficulty": "easy",
       "condition": "nova-rag",
       "answer": "The `Route` class is not defined directly in Express's source \u2014 it is re-exported from the `router` package. The canonical definition is in:\n\n- **`node_modules/router/lib/route.js`**, function constructor `Route` (line 41)\n\nExpress exposes it via **`lib/express.js:70`** as `exports.Route = Router.Route`.",
-      "file_hit": false,
+      "file_hit": true,
       "symbol_hit": true,
-      "correct": false,
+      "correct": true,
       "judge_correct": null,
       "input_tokens": 7,
       "output_tokens": 707,
@@ -1849,5 +1849,6 @@
       "mcp_calls": 0,
       "error": null
     }
-  ]
+  ],
+  "regraded": true
 }

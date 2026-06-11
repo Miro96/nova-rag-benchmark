@@ -83,6 +83,29 @@ in the MCP config puts all tools back inline in the model's tool list.
 The harness now sets it in its generated config, matching nova-rag's
 documented install command.
 
+**v3 runs (with the alwaysLoad fix) — adoption 97–100%:**
+
+| | Express (regraded) | Private C# monorepo |
+|---|---|---|
+| MCP adoption | 9% → **97%** | 18% → **100%** |
+| Accuracy (nova vs baseline) | 91.4% vs 97.1% | **100% vs 100%** |
+| Latency p50 (nova vs baseline) | 28.1s vs 40.8s (**−31%**) | 19.4s vs 69.0s (**−72%**) |
+| Tokens | +61% | parity |
+
+On the private monorepo the agent switched almost entirely to nova-rag
+(44 `code_search` + 14 `rag_source` calls; `Read` dropped 327 → 5) and
+answered **3.5x faster at equal accuracy**. Two honest caveats from
+Express: (1) the original "accuracy drop" was mostly a **ground-truth
+bug** — Express 5 moved the router to an external package; the stale
+dataset rewarded the baseline for citing `lib/router/*.js` paths *that
+don't exist in the checkout* (training-data hallucination) and punished
+nova's grounded "it's an external package" answers. Fixed in the
+dataset; all runs re-graded from stored answers (`scripts/regrade.py`).
+(2) The remaining gap is real and named: nova's index excludes
+`node_modules` by design, so vendored-dependency questions hit a blind
+spot, and the agent over-called search on the small repo (+61% tokens).
+Both are tracked as product follow-ups.
+
 ### Second run (Django 5.2, ~350K LOC) — and a methodology lesson
 
 30 verified ground-truth questions × 2 conditions on Django:

@@ -14,8 +14,8 @@
     "baseline": {
       "queries": 35,
       "errors": 0,
-      "accuracy": 0.9714,
-      "file_accuracy": 0.9714,
+      "accuracy": 1.0,
+      "file_accuracy": 1.0,
       "symbol_accuracy": 1.0,
       "judge_accuracy": null,
       "tokens_mean": 639.5,
@@ -23,6 +23,8 @@
       "cost_usd_total": 3.8745,
       "turns_mean": 3,
       "duration_ms_median": 37389,
+      "mcp_adoption": 0.0,
+      "tool_calls_total": {},
       "by_type": {
         "architecture": {
           "queries": 1,
@@ -46,7 +48,7 @@
         },
         "locate": {
           "queries": 16,
-          "accuracy": 0.9375
+          "accuracy": 1.0
         },
         "multi_hop": {
           "queries": 1,
@@ -61,8 +63,8 @@
     "nova-rag": {
       "queries": 33,
       "errors": 2,
-      "accuracy": 0.9697,
-      "file_accuracy": 0.9697,
+      "accuracy": 1.0,
+      "file_accuracy": 1.0,
       "symbol_accuracy": 1.0,
       "judge_accuracy": null,
       "tokens_mean": 593.1,
@@ -70,6 +72,8 @@
       "cost_usd_total": 3.5939,
       "turns_mean": 2.7,
       "duration_ms_median": 23957,
+      "mcp_adoption": 0.0,
+      "tool_calls_total": {},
       "by_type": {
         "architecture": {
           "queries": 1,
@@ -93,7 +97,7 @@
         },
         "locate": {
           "queries": 15,
-          "accuracy": 0.9333
+          "accuracy": 1.0
         },
         "multi_hop": {
           "queries": 1,
@@ -108,8 +112,8 @@
     "delta": {
       "baseline": "baseline",
       "treatment": "nova-rag",
-      "accuracy_pp": -0.2,
-      "file_accuracy_pp": -0.2,
+      "accuracy_pp": 0.0,
+      "file_accuracy_pp": 0.0,
       "symbol_accuracy_pp": 0.0,
       "tokens_change_pct": -7.3,
       "turns_change": -0.3
@@ -519,9 +523,9 @@
       "difficulty": "easy",
       "condition": "baseline",
       "answer": "The `Route` class comes from the external `router` npm package. In this Express codebase, it is re-exported at `lib/express.js:70` as `exports.Route = Router.Route`, where `Router` is `require('router')`.\n\nThe actual `Route` class definition lives inside the `router` package (a peer dependency), not in the Express source tree itself.",
-      "file_hit": false,
+      "file_hit": true,
       "symbol_hit": true,
-      "correct": false,
+      "correct": true,
       "judge_correct": null,
       "input_tokens": 9,
       "output_tokens": 744,
@@ -537,9 +541,9 @@
       "difficulty": "easy",
       "condition": "nova-rag",
       "answer": "The `Route` class is defined in the **`router` npm package** (an external dependency), not directly in the Express source. It's re-exported from Express at `lib/express.js:70` as `exports.Route = Router.Route`.\n\nTo see the actual definition, it would be in `node_modules/router/lib/route.js` (the `Route` constructor/class inside that package).",
-      "file_hit": false,
+      "file_hit": true,
       "symbol_hit": true,
-      "correct": false,
+      "correct": true,
       "judge_correct": null,
       "input_tokens": 8,
       "output_tokens": 549,
@@ -1376,5 +1380,6 @@
       "duration_ms": 34292,
       "error": null
     }
-  ]
+  ],
+  "regraded": true
 }
