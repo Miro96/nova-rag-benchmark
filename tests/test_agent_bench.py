@@ -11,6 +11,7 @@ from rag_bench.agent_bench import (
     grade,
     grade_files,
     grade_symbols,
+    parse_stream_json,
     render_markdown,
     run_agent_benchmark,
 )
@@ -83,17 +84,63 @@ class TestCommandConstruction:
         assert "--model" not in cmd
 
 
+class TestStreamJsonParsing:
+    def _stream(self):
+        import json as _json
+
+        events = [
+            {"type": "system", "subtype": "init"},
+            {"type": "assistant", "message": {"content": [
+                {"type": "text", "text": "let me search"},
+                {"type": "tool_use", "name": "mcp__nova-rag__code_search", "input": {}},
+            ]}},
+            {"type": "user", "message": {"content": [{"type": "tool_result"}]}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "name": "Read", "input": {}},
+                {"type": "tool_use", "name": "Read", "input": {}},
+            ]}},
+            {"type": "result", "result": "the answer",
+             "usage": {"input_tokens": 10, "output_tokens": 5},
+             "num_turns": 3, "is_error": False},
+        ]
+        return "\n".join(_json.dumps(e) for e in events)
+
+    def test_counts_tool_uses_and_returns_final_result(self):
+        raw = parse_stream_json(self._stream())
+        assert raw["result"] == "the answer"
+        assert raw["_tool_calls"] == {"mcp__nova-rag__code_search": 1, "Read": 2}
+        assert raw["usage"]["input_tokens"] == 10
+
+    def test_plain_json_fallback(self):
+        import json as _json
+
+        raw = parse_stream_json(_json.dumps({"result": "x", "usage": {}}))
+        assert raw["result"] == "x"
+        assert raw["_tool_calls"] == {}
+
+    def test_command_uses_stream_json(self):
+        cond = AgentCondition("baseline", list(BASELINE_TOOLS))
+        cmd = _build_claude_cmd("q", cond, model=None, max_turns=5)
+        assert "stream-json" in cmd
+        assert "--verbose" in cmd
+
+
 def _fake_runner_factory(answers: dict):
     """Returns a runner that answers by condition name."""
 
     def runner(prompt, condition, cwd, model, max_turns, timeout):
         text = answers.get(condition.name, "no idea")
+        tool_calls = (
+            {"mcp__nova-rag__code_search": 1, "Read": 1}
+            if condition.name == "nova-rag" else {"Grep": 3, "Read": 2}
+        )
         return {
             "result": text,
             "usage": {"input_tokens": 1000, "output_tokens": 100},
             "cost": {"total_cost_usd": 0.01},
             "num_turns": 3 if condition.name == "nova-rag" else 6,
             "duration_ms": 2000,
+            "_tool_calls": tool_calls,
         }
 
     return runner
@@ -127,6 +174,10 @@ class TestOrchestration:
         assert s["delta"]["turns_change"] == -3.0
         # Every query ran in both conditions
         assert len(doc["queries"]) == 4
+        # Adoption metric: nova arm used MCP tools, baseline didn't
+        assert s["nova-rag"]["mcp_adoption"] == 1.0
+        assert s["baseline"]["mcp_adoption"] == 0.0
+        assert s["nova-rag"]["tool_calls_total"]["mcp__nova-rag__code_search"] == 2
 
     def test_results_keep_raw_answers_for_audit(self, tmp_path):
         doc = self._run(tmp_path, {"baseline": "x", "nova-rag": "y"})

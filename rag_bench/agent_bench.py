@@ -28,6 +28,7 @@ import subprocess
 import tempfile
 import time
 import uuid
+from collections import Counter
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -86,6 +87,8 @@ class AgentQueryResult:
     cost_usd: float = 0.0
     num_turns: int = 0
     duration_ms: int = 0
+    tool_calls: dict = field(default_factory=dict)
+    mcp_calls: int = 0
     error: str | None = None
 
 
@@ -102,7 +105,12 @@ def _build_claude_cmd(
     cmd = [
         "claude",
         "-p", prompt,
-        "--output-format", "json",
+        # stream-json exposes every tool_use event — without it, MCP
+        # adoption is unmeasurable (we proved this the hard way: 0%
+        # answer-text fingerprints over 91 queries). --verbose is
+        # required by the CLI for stream-json in print mode.
+        "--output-format", "stream-json",
+        "--verbose",
         "--max-turns", str(max_turns),
         # Hermetic runs: ignore the user's configured MCP servers and
         # settings/CLAUDE.md so only what the benchmark passes applies.
@@ -122,6 +130,41 @@ def _build_claude_cmd(
     return cmd
 
 
+def parse_stream_json(stdout: str) -> dict:
+    """Parse stream-json output into the final result dict + tool counts.
+
+    Returns the terminal ``result`` event augmented with ``_tool_calls``
+    (tool name → invocation count). Falls back to plain-JSON parsing for
+    older CLI output.
+    """
+    result: dict | None = None
+    tool_calls: dict[str, int] = {}
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        if event.get("type") == "assistant":
+            content = (event.get("message") or {}).get("content") or []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "tool_use":
+                    name = block.get("name", "?")
+                    tool_calls[name] = tool_calls.get(name, 0) + 1
+        elif event.get("type") == "result":
+            result = event
+
+    if result is None:
+        # Old CLI / plain json fallback: the whole stdout is one object
+        result = json.loads(stdout)
+    result["_tool_calls"] = tool_calls
+    return result
+
+
 def _run_claude(
     prompt: str,
     condition: AgentCondition,
@@ -139,7 +182,7 @@ def _run_claude(
         raise RuntimeError(
             f"claude exited {proc.returncode}: {proc.stderr.strip()[:500]}"
         )
-    raw = json.loads(proc.stdout)
+    raw = parse_stream_json(proc.stdout)
     if raw.get("is_error"):
         # Auth failures etc. come back success-shaped with is_error=true —
         # grading that text would silently poison the results.
@@ -217,6 +260,13 @@ def aggregate(results: list[AgentQueryResult]) -> dict:
             "cost_usd_total": round(sum(r.cost_usd for r in rows), 4),
             "turns_mean": round(statistics.mean(r.num_turns for r in rows), 2),
             "duration_ms_median": statistics.median(r.duration_ms for r in rows),
+            # Share of queries where at least one MCP tool was invoked —
+            # the adoption metric; nothing downstream matters if the
+            # agent never picks the tool.
+            "mcp_adoption": round(sum(r.mcp_calls > 0 for r in rows) / n, 4),
+            "tool_calls_total": dict(sum(
+                (Counter(r.tool_calls) for r in rows), Counter()
+            )),
             "by_type": _by_type(rows),
         }
     if len(conditions) == 2:
@@ -364,6 +414,11 @@ def run_agent_benchmark(
                         r.duration_ms = int(float(raw["duration_seconds"]) * 1000)
                     else:
                         r.duration_ms = int((time.time() - t0) * 1000)
+                    r.tool_calls = raw.get("_tool_calls", {})
+                    r.mcp_calls = sum(
+                        n for name, n in r.tool_calls.items()
+                        if name.startswith("mcp__")
+                    )
                     r.file_hit, r.symbol_hit, r.correct = grade(r.answer, q)
                     if judge and r.answer:
                         r.judge_correct = _judge_one(q, r.answer, model, runner_cwd=repo_dir)
@@ -440,6 +495,7 @@ def render_markdown(doc: dict) -> str:
     lines.append(row("Tokens / query (mean)", "tokens_mean", "{:,.0f}"))
     lines.append(row("Agent turns (mean)", "turns_mean", "{}"))
     lines.append(row("Latency p50 (ms)", "duration_ms_median", "{:,.0f}"))
+    lines.append(row("MCP adoption", "mcp_adoption", "{:.0%}"))
     lines.append(row("Total cost (USD)", "cost_usd_total", "${}"))
 
     delta = s.get("delta")
