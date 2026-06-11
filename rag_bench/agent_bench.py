@@ -318,9 +318,15 @@ def _make_nova_rag_mcp_config(work_dir: Path, server_command: list[str]) -> Path
     config = {
         "mcpServers": {
             "nova-rag": {
+                "type": "stdio",
                 "command": server_command[0],
                 "args": server_command[1:],
                 "env": {"NOVA_RAG_DATA_DIR": str(data_dir)},
+                # Without this, Claude Code defers MCP tool schemas behind
+                # ToolSearch and the model never sees the tool descriptions
+                # at decision time — measured at 9-18% adoption. This is
+                # also the documented install recommendation for users.
+                "alwaysLoad": True,
             }
         }
     }

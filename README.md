@@ -78,6 +78,11 @@ queries where the agent *did* route through nova-rag, **8/8 answers were
 correct**. Conclusion: tool *visibility*, not retrieval quality, is the
 current bottleneck — measure adoption before believing any A/B delta.
 
+The fix (verified empirically): `"alwaysLoad": true` on the server entry
+in the MCP config puts all tools back inline in the model's tool list.
+The harness now sets it in its generated config, matching nova-rag's
+documented install command.
+
 ### Second run (Django 5.2, ~350K LOC) — and a methodology lesson
 
 30 verified ground-truth questions × 2 conditions on Django:
