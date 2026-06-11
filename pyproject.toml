@@ -3,9 +3,11 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "rag-bench"
+# PyPI name: "rag-bench" is already taken by an unrelated package —
+# the distribution is nova-rag-bench, the CLI command stays `rag-bench`.
+name = "nova-rag-bench"
 version = "0.1.0"
-description = "Benchmark for Code RAG MCP servers"
+description = "Benchmark for Code RAG MCP servers — retrieval metrics + end-to-end agent A/B (Claude Code with vs without code intelligence)"
 license = "MIT"
 readme = "README.md"
 keywords = ["rag", "mcp", "benchmark", "code-search", "llm"]
@@ -34,6 +36,14 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
 ]
+# Optional preset backends (their tests skip-fail without these)
+bm25 = ["rank-bm25>=0.2"]
+cocoindex = ["cocoindex-code>=0.2"]
 
 [project.scripts]
 rag-bench = "rag_bench.cli:cli"
+
+[tool.hatch.build.targets.wheel]
+# Distribution name (nova-rag-bench) differs from the import package —
+# tell hatchling explicitly what to ship.
+packages = ["rag_bench", "server"]

@@ -1,10 +1,75 @@
 # rag-bench
 
-**Benchmark for Code RAG MCP Servers** — measure how well RAG helps AI find the right code.
+**Does code intelligence actually make your AI coding agent better? Measure it.**
 
-No existing benchmark covers the intersection of **code search + MCP protocol + A/B comparison**. rag-bench fills that gap.
+rag-bench answers the question every agent user asks: *"is semantic indexing worth it, or is grep enough?"* — with two complementary benchmarks:
 
-## What it measures
+1. **Agent A/B benchmark** (`rag-bench agent`) — the headline. Real headless **Claude Code** sessions answer 105 ground-truth codebase questions twice: once with built-in lexical tools only (Grep/Glob/Read), once with a code-intelligence MCP server added. Measures **answer accuracy, tokens, agent turns, latency, and cost** per condition. Same methodology class as [Cursor's Context Bench](https://cursor.com/blog/semsearch), which found semantic search makes agents **6.5–23.5% more accurate** than grep-only.
+2. **Retrieval benchmark** (`rag-bench run`) — the engine-level view. Measures the search server in isolation: Hit@K, MRR, symbol resolution, latency, ingest speed. Useful for tuning retrieval; not sufficient to claim agent-level value — that's what the A/B mode is for.
+
+No other benchmark covers **code search + MCP protocol + end-to-end agent A/B** in one tool.
+
+## Agent A/B benchmark (the one that matters)
+
+```bash
+# Requires: Claude Code CLI on PATH + nova-rag (or your server) installed
+# Smoke run first — it spends real API/subscription usage:
+rag-bench agent --repo flask --limit 10
+
+# Full run, 105 queries × 2 conditions, with markdown report:
+rag-bench agent -o results/agent_full.json -m results/agent_report.md
+```
+
+What it does per query:
+
+```
+              ┌─ condition A: claude -p "<question>" --bare --allowedTools Grep,Glob,Read
+question ─────┤
+              └─ condition B: same + --mcp-config nova-rag (tools: code_search, repo_map, …)
+                       │
+                       ▼
+   grade answer vs ground truth (expected files + symbols, word-boundary matched)
+   record: correct? · input/output tokens · num_turns · duration · cost
+```
+
+Design choices that keep it honest:
+
+- **Hermetic**: `--bare` — no user settings, no CLAUDE.md, no other MCP servers leak in.
+- **Neutral prompt**: the question never mentions any tool; neither arm gets hints.
+- **Symmetric warmup**: one discarded query per arm; nova-rag's index build happens there (an index, like Cursor's, exists before users ask questions).
+- **Interleaved conditions**: each query runs A then B back-to-back, so API drift is balanced.
+- **Transparent grading**: an answer is correct iff it cites an expected file (last-two path components) **and** an expected symbol (word-boundary). All raw answers are stored in the results JSON for audit. Optional `--judge` adds LLM-rubric grading.
+
+### First published run (Express, Claude Sonnet 4.6)
+
+35 ground-truth questions × 2 conditions, June 2026, single replicate:
+
+| Metric | baseline (Grep/Glob/Read) | + nova-rag |
+|---|---|---|
+| Accuracy (file+symbol) | 97.1% | 97.0% |
+| Tokens / query (mean) | 640 | **593 (−7.3%)** |
+| Agent turns (mean) | 3.0 | **2.7** |
+| Latency p50 | 37.4 s | **24.0 s (−36%)** |
+| Cost (35 queries) | $3.87 | **$3.59 (−7.2%)** |
+
+Honest read of this table:
+
+- **Accuracy saturates on small repos.** Express is ~15K LOC; a frontier
+  model with grep already answers 97% of questions correctly — there is
+  no accuracy headroom left to win. This matches Cursor's finding that
+  semantic-search gains concentrate on **large** codebases. Accuracy
+  deltas should be measured on 100K+ LOC repos (planned; PRs adding a
+  large-repo query set are very welcome).
+- **The wins on a small repo are speed and efficiency:** the agent
+  answers a third faster, in fewer turns, using fewer tokens — because
+  one `code_search`/`rag_graph` call replaces a grep→read→grep chain.
+- 2 of 70 runs errored (one subprocess timeout, one transient CLI
+  error); they are excluded from aggregates and visible in the raw JSON
+  (`results/agent_express_sonnet46.json`).
+
+> Run it on your own machine and your own model tier — then publish your table. PRs with result tables (including ones where the baseline wins) are welcome.
+
+## Retrieval benchmark (engine-level)
 
 rag-bench indexes real open-source repositories (Flask, FastAPI, Express) and runs 105 code search queries with known correct answers. It measures:
 
@@ -41,14 +106,15 @@ Compare RAG vs grep/glob baseline to measure the actual improvement RAG provides
 ## Quick start
 
 ```bash
-# Clone
+# From PyPI (distribution name is nova-rag-bench; the CLI is `rag-bench`)
+pip install nova-rag-bench
+
+# Or from source
 git clone https://github.com/Miro96/nova-rag-benchmark.git
 cd nova-rag-benchmark
-
-# Install
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev,bm25,cocoindex]"
 
 # Run benchmark on your RAG MCP server
 rag-bench run --command "python -m your_server" --transport stdio
@@ -56,7 +122,7 @@ rag-bench run --command "python -m your_server" --transport stdio
 # Or use a preset
 rag-bench run --preset mcp-local-rag
 
-# Run tests (325 tests)
+# Run tests (761 tests)
 pytest tests/ -v
 ```
 
@@ -208,7 +274,7 @@ rag-bench compare --presets nova-rag,naive-rag,cocoindex-code,grep-glob --replic
 
 **Key takeaways:**
 - **nova-rag** is the only preset that resolves symbols (33.3% Symbol Hit@5) — grep/glob and embedding-only approaches can't identify function/class names.
-- **grep-glob** wins on raw file recall (55.2% Hit@5) but returns no symbol-level results.
+- **grep-glob** wins on raw file recall (55.2% Hit@5) — but read this number carefully: grep "wins" recall by returning broad lists of candidate files. An agent consuming that list still has to open and read each candidate, burning turns and tokens. File recall measures the engine; it does **not** measure what the agent experiences. That gap is exactly why the [agent A/B benchmark](#agent-ab-benchmark-the-one-that-matters) exists — it measures answer accuracy and token cost end-to-end, where symbol resolution and graph queries (callers/impact) pay off.
 - **naive-rag** (embedding-only) performs worst on file recall (6.7% Hit@5), showing that semantic similarity alone is insufficient for code search.
 - **cocoindex-code** has high latency (~450 ms p50) vs sub-25ms for other approaches.
 - **nova-rag** indexes 13× faster than naive-rag (2,675 vs 206 files/sec).

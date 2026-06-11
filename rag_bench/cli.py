@@ -215,6 +215,68 @@ def serve(port, host):
 
 
 @cli.command()
+@click.option("--repo", help="Run only on a specific repo (flask, fastapi, express)")
+@click.option("--model", default=None, help="Claude model (e.g. sonnet, haiku). Defaults to Claude Code's default.")
+@click.option("--max-turns", default=15, show_default=True, help="Agent turn cap per query.")
+@click.option("--limit", type=int, default=None, help="Limit queries per repo (smoke runs).")
+@click.option("--timeout", default=300, show_default=True, help="Per-query timeout in seconds.")
+@click.option("--judge", is_flag=True, help="Additionally grade answers with an LLM judge.")
+@click.option(
+    "--conditions",
+    default="baseline,nova-rag",
+    show_default=True,
+    help="Comma-separated arms to run.",
+)
+@click.option(
+    "--nova-rag-command",
+    default="nova-rag",
+    show_default=True,
+    help="Command that launches the nova-rag MCP server.",
+)
+@click.option("--output", "-o", type=click.Path(), help="Output JSON path")
+@click.option("--markdown", "-m", type=click.Path(), help="Also write a markdown report")
+def agent(repo, model, max_turns, limit, timeout, judge, conditions,
+          nova_rag_command, output, markdown):
+    """End-to-end A/B: Claude Code with vs without nova-rag.
+
+    Runs real headless Claude Code sessions over the ground-truth query
+    set and measures answer accuracy, tokens, turns, latency and cost
+    per condition. Requires the `claude` CLI on PATH and nova-rag
+    installed. Costs real API/subscription usage — start with
+    `--repo flask --limit 10`.
+    """
+    import shutil as _shutil
+
+    from rag_bench.agent_bench import render_markdown, run_agent_benchmark
+
+    if _shutil.which("claude") is None:
+        raise click.ClickException("`claude` CLI not found on PATH — install Claude Code first.")
+
+    doc = run_agent_benchmark(
+        repo_filter=repo,
+        model=model,
+        max_turns=max_turns,
+        limit=limit,
+        timeout=timeout,
+        judge=judge,
+        conditions=[c.strip() for c in conditions.split(",") if c.strip()],
+        nova_rag_command=nova_rag_command.split(),
+        on_progress=lambda msg: click.echo(msg),
+    )
+
+    out_path = Path(output) if output else Path("results") / f"agent_{doc['run_id'][:8]}.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(doc, indent=2))
+    click.echo(f"\nResults written to {out_path}")
+
+    report = render_markdown(doc)
+    click.echo("\n" + report)
+    if markdown:
+        Path(markdown).write_text(report + "\n")
+        click.echo(f"Markdown report written to {markdown}")
+
+
+@cli.command()
 @click.option("--preset", help="Preset name to validate (e.g. nova-rag).")
 @click.option("--config", type=click.Path(exists=True), help="Custom server config JSON.")
 @click.option("--command", help="Server launch command (auto-detect mode).")
