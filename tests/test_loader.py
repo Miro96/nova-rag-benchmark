@@ -8,7 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from rag_bench.datasets.loader import Query, load_queries, WarmupQuery
+from rag_bench.datasets.loader import PUBLIC_REPOS, Query, load_queries, WarmupQuery
+
+def _public_queries():
+    """Shipped dataset only — private overlay sets must not break the suite."""
+    return [q for q in load_queries() if q.repo in PUBLIC_REPOS]
+
 
 
 # ── VAL-DATA-001: Query supports expected_content ──────────────────────
@@ -135,7 +140,7 @@ class TestLocateQueriesHaveExpectedContent:
 
     def test_all_locate_queries_have_expected_content(self):
         """All 49 locate queries across all 3 repos have expected_content."""
-        queries = load_queries()
+        queries = _public_queries()
         locate_queries = [q for q in queries if q.type == "locate"]
         assert len(locate_queries) == 63, f"Expected 63 locate, got {len(locate_queries)}"
 
@@ -157,7 +162,7 @@ class TestCallersQueriesHaveExpectedContent:
 
     def test_all_callers_queries_have_expected_content(self):
         """All 12 callers queries across all 3 repos have expected_content."""
-        queries = load_queries()
+        queries = _public_queries()
         callers_queries = [q for q in queries if q.type == "callers"]
         assert len(callers_queries) == 16, f"Expected 16 callers, got {len(callers_queries)}"
 
@@ -184,7 +189,7 @@ class TestOtherQueryTypesLoadSuccessfully:
 
     def test_other_types_load_successfully(self):
         """All queries of types other than locate/callers load fine."""
-        queries = load_queries()
+        queries = _public_queries()
         other_queries = [q for q in queries if q.type not in ("locate", "callers")]
         assert len(other_queries) > 0, "Expected some non-locate/callers queries"
 
@@ -198,6 +203,8 @@ class TestOtherQueryTypesLoadSuccessfully:
         """Non-locate/callers queries in JSONL don't have expected_content key."""
         import rag_bench.datasets.loader as loader_mod
         for qfile in sorted(loader_mod.QUERIES_DIR.glob("*.jsonl")):
+            if qfile.stem not in PUBLIC_REPOS:
+                continue  # private overlay sets are exempt from public conventions
             for line in qfile.read_text().strip().split("\n"):
                 if not line.strip():
                     continue
@@ -228,7 +235,7 @@ class TestExpectedContentInSourceFiles:
     def test_expected_content_in_source_files(self, repo_paths):
         """Every expected_content entry exists in at least one expected_file
         (or a known alt path for Express 5 / FastAPI re-exports)."""
-        queries = load_queries()
+        queries = _public_queries()
         failures = []
 
         # Known alternate file paths when expected_files reference files

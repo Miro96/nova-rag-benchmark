@@ -7,3 +7,7 @@ results/
 .pytest_cache/
 dist/
 build/
+
+# Private/local benchmark datasets — never published
+rag_bench/datasets/repos.local.json
+rag_bench/datasets/queries/novastorm-api.jsonl

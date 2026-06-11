@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from rag_bench.datasets.loader import load_queries, load_repos
+from rag_bench.datasets.loader import PUBLIC_REPOS, load_queries, load_repos
+
+def _public_queries():
+    """Shipped dataset only — private overlay sets must not break the suite."""
+    return [q for q in load_queries() if q.repo in PUBLIC_REPOS]
+
 from rag_bench.runner import _estimate_index_size
 
 
@@ -198,13 +203,13 @@ class TestEstimateIndexSize:
 
 class TestDatasetLoader:
     def test_load_repos(self):
-        repos = load_repos()
+        repos = [r for r in load_repos() if r.name in PUBLIC_REPOS]
         assert len(repos) == 4
         names = {r.name for r in repos}
         assert names == {"flask", "fastapi", "express", "django"}
 
     def test_load_all_queries(self):
-        queries = load_queries()
+        queries = _public_queries()
         assert len(queries) == 135  # 35 per original repo + 30 django
 
     def test_load_filtered_queries(self):
@@ -224,7 +229,7 @@ class TestDatasetLoader:
         assert len(q.query) > 0
 
     def test_query_types_distribution(self):
-        queries = load_queries()
+        queries = _public_queries()
         types = {q.type for q in queries}
         # Original types + 7 new complex query types from M1
         assert types == {"locate", "callers", "explain", "impact",
@@ -232,7 +237,7 @@ class TestDatasetLoader:
                          "dead_code", "conditional_path", "test_traceability"}
 
     def test_difficulty_distribution(self):
-        queries = load_queries()
+        queries = _public_queries()
         difficulties = {q.difficulty for q in queries}
         assert difficulties == {"easy", "medium", "hard"}
 

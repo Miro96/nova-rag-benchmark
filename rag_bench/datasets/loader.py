@@ -12,9 +12,18 @@ logger = logging.getLogger(__name__)
 
 DATASETS_DIR = Path(__file__).parent
 REPOS_JSON = DATASETS_DIR / "repos.json"
+# Optional, gitignored overlay for private/local repos: benchmark your own
+# codebase without touching the public dataset. Same schema as repos.json;
+# pre-populate ~/.cache/rag-bench/repos/<name> (clone_repo skips existing
+# dirs) and drop a matching queries/<name>.jsonl (also gitignored).
+REPOS_LOCAL_JSON = DATASETS_DIR / "repos.local.json"
 QUERIES_DIR = DATASETS_DIR / "queries"
 WARMUP_JSONL = DATASETS_DIR / "warmup.jsonl"
 CACHE_DIR = Path.home() / ".cache" / "rag-bench" / "repos"
+
+#: Repos shipped with the benchmark (tests assert against these only,
+#: so private overlay datasets never break the suite).
+PUBLIC_REPOS = {"flask", "fastapi", "express", "django"}
 
 
 @dataclass
@@ -45,8 +54,10 @@ class RepoInfo:
 
 
 def load_repos() -> list[RepoInfo]:
-    """Load repository definitions."""
+    """Load repository definitions (public set + optional local overlay)."""
     data = json.loads(REPOS_JSON.read_text())
+    if REPOS_LOCAL_JSON.exists():
+        data += json.loads(REPOS_LOCAL_JSON.read_text())
     return [RepoInfo(**r) for r in data]
 
 
