@@ -19,5 +19,12 @@
     "ref": "v5.0.1",
     "language": "javascript",
     "size": "small"
+  },
+  {
+    "name": "django",
+    "git_url": "https://github.com/django/django.git",
+    "ref": "5.2",
+    "language": "python",
+    "size": "large"
   }
 ]

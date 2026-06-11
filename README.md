@@ -67,6 +67,38 @@ Honest read of this table:
   error); they are excluded from aggregates and visible in the raw JSON
   (`results/agent_express_sonnet46.json`).
 
+### Second run (Django 5.2, ~350K LOC) — and a methodology lesson
+
+30 verified ground-truth questions × 2 conditions on Django:
+
+| Metric | baseline | + nova-rag |
+|---|---|---|
+| Accuracy (file+symbol) | 100% | 100% |
+| Tokens / query (mean) | 518 | 514 |
+| Agent turns (mean) | 2.1 | 2.1 |
+| Latency p50 | 19.8 s | 19.0 s |
+
+A perfect tie — and the *why* matters more than the table: **frontier
+models know famous open-source codebases from training**. The agent
+answered most Django questions in ~2 turns, barely searching at all —
+it already "remembers" that `QuerySet` lives in `django/db/models/query.py`.
+On repos that saturate a model's world knowledge, no retrieval tool can
+show an accuracy delta, because retrieval barely happens.
+
+Implications, stated plainly:
+
+- Accuracy deltas must be measured on code the model has **not**
+  memorized: private codebases, post-training-cutoff repos, or obscure
+  projects. (This is presumably why Cursor's bench used their own eval
+  corpora rather than famous OSS.) Adding a post-cutoff query set is the
+  top roadmap item — PRs welcome.
+- The Express run above remains the informative one for efficiency: when
+  the agent *does* search, nova-rag shortens the loop (−36% latency,
+  −7.3% tokens at equal accuracy).
+- Dataset integrity: every Django ground-truth entry is machine-verified
+  against the pinned 5.2 source (`scripts/verify_django_queries.py`) —
+  files must exist and symbols must be defined where claimed.
+
 > Run it on your own machine and your own model tier — then publish your table. PRs with result tables (including ones where the baseline wins) are welcome.
 
 ## Retrieval benchmark (engine-level)
@@ -283,13 +315,20 @@ Reproducibility: all presets had CV < 0.05 across 3 replicates for composite sco
 
 ## Dataset
 
-3 real open-source repositories, 105 queries with ground truth:
+4 real open-source repositories, 135 queries with ground truth:
 
 | Repository | Language | Size | Queries |
 |------------|----------|------|---------|
 | [Flask](https://github.com/pallets/flask) | Python | ~15K LOC | 35 |
 | [FastAPI](https://github.com/fastapi/fastapi) | Python | ~40K LOC | 35 |
 | [Express](https://github.com/expressjs/express) | JavaScript | ~15K LOC | 35 |
+| [Django](https://github.com/django/django) | Python | ~350K LOC | 30 |
+
+Django entries are machine-verified against the pinned 5.2 source by
+`scripts/verify_django_queries.py` (files must exist, symbols must be
+defined where claimed) — but note the training-data caveat in the agent
+benchmark section: famous repos cannot reveal accuracy deltas for
+frontier models.
 
 Each query has:
 - Expected files (ground truth)

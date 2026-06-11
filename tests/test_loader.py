@@ -137,7 +137,7 @@ class TestLocateQueriesHaveExpectedContent:
         """All 49 locate queries across all 3 repos have expected_content."""
         queries = load_queries()
         locate_queries = [q for q in queries if q.type == "locate"]
-        assert len(locate_queries) == 49, f"Expected 49 locate, got {len(locate_queries)}"
+        assert len(locate_queries) == 63, f"Expected 63 locate, got {len(locate_queries)}"
 
         for q in locate_queries:
             assert q.expected_content, (
@@ -159,7 +159,7 @@ class TestCallersQueriesHaveExpectedContent:
         """All 12 callers queries across all 3 repos have expected_content."""
         queries = load_queries()
         callers_queries = [q for q in queries if q.type == "callers"]
-        assert len(callers_queries) == 12, f"Expected 12 callers, got {len(callers_queries)}"
+        assert len(callers_queries) == 16, f"Expected 16 callers, got {len(callers_queries)}"
 
         for q in callers_queries:
             assert q.expected_content, (

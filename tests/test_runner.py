@@ -199,13 +199,13 @@ class TestEstimateIndexSize:
 class TestDatasetLoader:
     def test_load_repos(self):
         repos = load_repos()
-        assert len(repos) == 3
+        assert len(repos) == 4
         names = {r.name for r in repos}
-        assert names == {"flask", "fastapi", "express"}
+        assert names == {"flask", "fastapi", "express", "django"}
 
     def test_load_all_queries(self):
         queries = load_queries()
-        assert len(queries) == 105  # 30 original + 5 complex per repo
+        assert len(queries) == 135  # 35 per original repo + 30 django
 
     def test_load_filtered_queries(self):
         queries = load_queries("flask")
