@@ -94,7 +94,16 @@ documented install command.
 
 On the private monorepo the agent switched almost entirely to nova-rag
 (44 `code_search` + 14 `rag_source` calls; `Read` dropped 327 → 5) and
-answered **3.5x faster at equal accuracy**. Two honest caveats from
+answered **3.5x faster at equal accuracy**.
+
+**v4 validation run** (after adding trust-calibration hints: "symbol not
+in index — vendored deps are excluded, Grep them" and "small repo — one
+search is enough"): private monorepo improved further to **p50 11.8s vs
+60.7s (−81%) at 100% vs 100% accuracy with 17% fewer tokens**. Express
+remains noisy run-to-run (±2 questions on n=35) and structurally
+awkward: Express 5 is a thin shell over external packages
+(router/body-parser), so several "internals" questions have no in-repo
+answer — treat Express numbers as directional only. Two honest caveats from
 Express: (1) the original "accuracy drop" was mostly a **ground-truth
 bug** — Express 5 moved the router to an external package; the stale
 dataset rewarded the baseline for citing `lib/router/*.js` paths *that

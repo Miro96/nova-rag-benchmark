@@ -69,8 +69,8 @@
     "nova-rag": {
       "queries": 35,
       "errors": 0,
-      "accuracy": 0.9143,
-      "file_accuracy": 0.9429,
+      "accuracy": 0.9714,
+      "file_accuracy": 1.0,
       "symbol_accuracy": 0.9714,
       "judge_accuracy": null,
       "tokens_mean": 936.9,
@@ -108,7 +108,7 @@
         },
         "impact": {
           "queries": 5,
-          "accuracy": 0.6
+          "accuracy": 1.0
         },
         "locate": {
           "queries": 16,
@@ -127,8 +127,8 @@
     "delta": {
       "baseline": "baseline",
       "treatment": "nova-rag",
-      "accuracy_pp": -5.6,
-      "file_accuracy_pp": -5.7,
+      "accuracy_pp": 0.1,
+      "file_accuracy_pp": 0.0,
       "symbol_accuracy_pp": 0.1,
       "tokens_change_pct": 60.8,
       "turns_change": 3.98
@@ -1317,9 +1317,9 @@
       "difficulty": "hard",
       "condition": "nova-rag",
       "answer": "There is **no `Layer` class** in this Express codebase. The `lib/router/` directory (which typically contains `layer.js` in Express) does not exist here \u2014 the only files under `lib/` are:\n\n- `lib/application.js`\n- `lib/express.js`\n- `lib/request.js`\n- `lib/response.js`\n- `lib/utils.js`\n- `lib/view.js`\n\nThe word \"layer\" appears only as a comment in `examples/content-negotiation/index.js:30` with no code significance. If you're thinking of a different symbol or a dependency package's `Layer` class, please clarify.",
-      "file_hit": false,
+      "file_hit": true,
       "symbol_hit": true,
-      "correct": false,
+      "correct": true,
       "judge_correct": null,
       "input_tokens": 10,
       "output_tokens": 1209,
@@ -1551,9 +1551,9 @@
       "difficulty": "hard",
       "condition": "nova-rag",
       "answer": "The `next()` mechanism is the core of Express's middleware dispatch system \u2014 it lives in the external `router` package (`^2.0.0`, declared in `package.json`) rather than Express's own `lib/`. Express consumes it via `req.next`. Here's what breaks:\n\n## Core dispatch chain\n- **`lib/router` (external)** \u2014 The `next()` function advances the middleware stack. Modifying it breaks sequential middleware execution entirely. Tested directly in `test/middleware.basic.js` (`.next()` describe block).\n\n## Error propagation\n- **`lib/application.js:mounted_app` (line 232-237)** \u2014 Uses `next(err)` to bubble errors from mounted sub-apps. If `next(err)` doesn't route to 4-argument error handlers, errors are silently swallowed.\n- **`test/app.routes.error.js`** \u2014 All error-handling middleware tests fail.\n\n## Response helpers that use `req.next`\n- **`lib/response.js:sendFile` (line 371)** \u2014 Pulls `next` from `req.next` to propagate file-serving errors. Broken `next` means errors are lost.\n- **`lib/response.js:format` (line 564)** \u2014 Uses `req.next` to invoke the matched content-type handler and to send `406 Not Acceptable`. Broken `next` means `res.format()` silently does nothing on no-match.\n\n## Special `next()` values\n- **`next('route')`** \u2014 Skips remaining handlers on a route; tested in `test/app.router.js`.\n- **`next('router')`** \u2014 Exits the current router; tested in `test/app.router.js` (line 878, `fn` function).\n- **`app.param()`** \u2014 Param callbacks call `next()` to resume routing; all param tests in `test/app.param.js` break.\n\n## Test surface\nNearly every test file is affected: `test/Route.js` (`Route.dispatch`), `test/Router.js`, `test/app.router.js`, `test/app.param.js`, `test/middleware.basic.js`, `test/res.sendFile.js`, and more \u2014 48 affected files total per the impact analysis.",
-      "file_hit": false,
+      "file_hit": true,
       "symbol_hit": true,
-      "correct": false,
+      "correct": true,
       "judge_correct": null,
       "input_tokens": 12,
       "output_tokens": 2322,

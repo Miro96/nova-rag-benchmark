@@ -41,6 +41,17 @@ class TestGrading:
     def test_windows_separators_normalized(self):
         assert grade_files(r"Defined in src\flask\app.py", ["src/flask/app.py"])
 
+    def test_split_citation_with_distinctive_basename(self):
+        # Directory and filename cited apart — common LLM answer style
+        answer = ("The service layer (`Payments.Api.Services/`) holds the "
+                  "orchestrator: `BillingService.cs` dispatches via MediatR.")
+        assert grade_files(answer, ["Payments.Api.Services/BillingService.cs"])
+
+    def test_split_citation_rejected_for_generic_basename(self):
+        # "router" + "index.js" appearing apart must NOT count
+        answer = "The router handles dispatch; see the package index.js entry."
+        assert not grade_files(answer, ["lib/router/index.js"])
+
     def test_symbol_word_boundary(self):
         assert grade_symbols("The Flask class handles it", ["Flask"])
         assert not grade_symbols("Use flask_restful instead", ["Flask"])

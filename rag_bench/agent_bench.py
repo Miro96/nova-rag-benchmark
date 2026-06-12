@@ -197,13 +197,27 @@ def _normalize_path(p: str) -> str:
     return p.replace("\\", "/").strip("/").lower()
 
 
+#: Basenames too generic to count as a citation on their own — they
+#: appear in nearly every repo and answer.
+_GENERIC_BASENAMES = {
+    "index.js", "index.ts", "index.py", "utils.js", "utils.py", "app.py",
+    "app.js", "main.py", "main.js", "base.py", "__init__.py", "mod.rs",
+    "lib.rs", "setup.py", "config.py", "types.ts",
+}
+
+
 def grade_files(answer: str, expected_files: list[str]) -> bool:
     """True if the answer cites at least one expected file.
 
-    Matches on the last two path components ("flask/app.py") so answers
-    citing repo-relative or absolute paths both count, while a bare
-    generic basename ("app.py" alone) still requires its parent dir.
-    Single-component expected paths fall back to basename matching.
+    Primary rule: the last two path components ("flask/app.py") appear
+    contiguously — repo-relative and absolute citations both count, a
+    bare generic basename does not.
+
+    Secondary rule (split citations): answers often name the directory
+    and the file apart ("in `Payments.Api.Services/`: `BillingService.cs`
+    orchestrates…"). A distinctive basename plus its parent directory
+    appearing anywhere in the answer counts too; generic basenames
+    (index.js, utils.py…) stay excluded from this relaxation.
     """
     if not expected_files:
         return True
@@ -212,6 +226,11 @@ def grade_files(answer: str, expected_files: list[str]) -> bool:
         parts = _normalize_path(f).split("/")
         needle = "/".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
         if needle in haystack:
+            return True
+        if (len(parts) >= 2
+                and parts[-1] not in _GENERIC_BASENAMES
+                and parts[-1] in haystack
+                and parts[-2] in haystack):
             return True
     return False
 
